@@ -93,6 +93,8 @@
 ```
 发送图片 + /改图 @小王 画成动漫风格
 ```
+<img width="1159" height="1458" alt="8749eeb3af9e51ebabe4c82ee04cc1a4" src="https://github.com/user-attachments/assets/55594e40-84b7-43bb-a636-167cd4e980af" />
+
 
 ### 智能头像功能
 
