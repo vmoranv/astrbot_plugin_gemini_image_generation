@@ -27,7 +27,7 @@ from .utils.image_manager import AvatarManager
 
 
 @register(
-    "AstrBot_plugin_gemini_image_generation",
+    "astrbot_plugin_gemini_image_generation",
     "piexian",
     "Gemini图像生成插件，支持生图和改图，可以自动获取头像作为参考",
     "v1.0.0",

@@ -39,7 +39,7 @@
 
 ### 安装步骤
 1. 将插件文件夹放置到 `data/plugins/` 目录下
-2. 确保 `AstrBot_plugin_gemini_image_generation` 文件夹存在
+2. 确保 `astrbot_plugin_gemini_image_generation` 文件夹存在
 3. 重启 AstrBot
 
 ## 🔧 配置
@@ -333,8 +333,8 @@
 
 ## 📞 联系支持
 
-- **项目地址**: [GitHub Repository](https://github.com/piexian/AstrBot_plugin_gemini_image_generation)
-- **问题反馈**: [Issues](https://github.com/piexian/AstrBot_plugin_gemini_image_generation/issues)
+- **项目地址**: [GitHub Repository](https://github.com/piexian/astrbot_plugin_gemini_image_generation)
+- **问题反馈**: [Issues](https://github.com/piexian/astrbot_plugin_gemini_image_generation/issues)
 
 ---
 

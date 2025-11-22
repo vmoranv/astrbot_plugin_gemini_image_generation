@@ -16,7 +16,7 @@ from astrbot.api.star import StarTools
 
 def get_plugin_data_dir() -> Path:
     """获取插件数据目录"""
-    return StarTools.get_data_dir("AstrBot_plugin_gemini_image_generation")
+    return StarTools.get_data_dir("astrbot_plugin_gemini_image_generation")
 
 
 async def cleanup_old_images(images_dir: Path | None = None):
