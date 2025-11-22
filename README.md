@@ -51,35 +51,10 @@
 
 在插件配置中设置以下参数：
 
-```json
-{
-  "openrouter_api_keys": [
-    "your-api-key-here"
-  ],
-  "api_settings": {
-    "api_type": "google",
-    "custom_api_base": "",
-    "model": "gemini-3-pro-image-preview"
-  },
-  "image_generation_settings": {
-    "resolution": "1K",
-    "aspect_ratio": "1:1",
-    "enable_grounding": false,
-    "max_reference_images": 6,
-    "enable_text_response": false
-  },
-  "retry_settings": {
-    "max_attempts_per_key": 3,
-    "enable_smart_retry": true
-  },
-  "service_settings": {
-    "auto_avatar_reference": false,
-    "nap_server_address": "localhost",
-    "nap_server_port": 3658,
-    "verbose_logging": false
-  }
-}
-```
+<img width="1473" height="1386" alt="image" src="https://github.com/user-attachments/assets/0a469eea-c4bb-422b-9541-1eb61784e353" />
+<img width="1429" height="902" alt="image" src="https://github.com/user-attachments/assets/637fbfb8-8f93-4e00-960c-353d17a39c55" />
+
+
 
 ### API 配置
 
