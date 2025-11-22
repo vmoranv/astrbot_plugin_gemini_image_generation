@@ -1,0 +1,144 @@
+{
+  "openrouter_api_keys": {
+    "description": "API密钥列表（记得删除默认文本）",
+    "type": "list",
+    "hint": "支持 OpenAI 兼容格式的 API 密钥。支持多个密钥自动轮换，当一个密钥额度耗尽时会自动切换到下一个。也可以填入 Google AI Studio 的 API Key（如果使用官方 API）",
+    "default": [
+      "your-api-key-here"
+    ],
+    "obvious_hint": true
+  },
+  "api_settings": {
+    "description": "API 设置",
+    "type": "object",
+    "hint": "配置 API 端点和相关设置",
+    "items": {
+      "api_type": {
+        "description": "API 类型",
+        "type": "string",
+        "hint": "选择使用的 API 类型。OpenAI 兼容格式支持多种模型，Google 官方 API 仅支持 Google 模型",
+        "default": "google",
+        "options": [
+          "google",
+          "openai"
+        ]
+      },
+      "custom_api_base": {
+        "description": "自定义 API Base URL（可选不填需要在海外）",
+        "type": "string",
+        "hint": "自定义的 API 基础地址,需要按照默认格式添加路径。OpenAI 兼容格式默认: https://openrouter.ai/api/v1，Google 官方默认: https://generativelanguage.googleapis.com/v1beta",
+        "default": ""
+      },
+      "model": {
+        "description": "模型名称",
+        "type": "string",
+        "hint": "要使用的模型名称。Google官方: gemini-3-pro-image-preview,gemini-2.5-flash-image-preview,gemini-2.5-flash-image。OpenAI兼容格式: 其他模型名称",
+        "default": "gemini-3-pro-image-preview"
+      }
+    }
+  },
+  "image_generation_settings": {
+    "description": "图像生成参数",
+    "type": "object",
+    "hint": "配置图像生成的参数，将根据模型能力自动调整",
+    "items": {
+      "resolution": {
+        "description": "图像分辨率",
+        "type": "string",
+        "hint": "生成图像的分辨率。不同模型支持的分辨率不同，请参考官方文档",
+        "default": "1K",
+        "options": [
+          "1K",
+          "2K",
+          "4K"
+        ]
+      },
+      "aspect_ratio": {
+        "description": "长宽比",
+        "type": "string",
+        "hint": "图像的长宽比例。不同模型支持的比例不同，请参考官方文档",
+        "default": "1:1",
+        "options": [
+          "1:1",
+          "16:9",
+          "4:3",
+          "3:2",
+          "9:16",
+          "4:5",
+          "5:4",
+          "21:9",
+          "3:4",
+          "2:3"
+        ]
+      },
+      "enable_grounding": {
+        "description": "启用 Google 搜索接地",
+        "type": "bool",
+        "hint": "启用后模型可以使用 Google 搜索验证事实并基于实时数据生成图片（如天气、股票、新闻等）。仅gemini-3-pro-image-preview模型支持",
+        "default": false
+      },
+      "max_reference_images": {
+        "description": "最大参考图片数量",
+        "type": "int",
+        "hint": "允许使用的最大参考图片数量。不同模型支持的数量不同（Gemini 3: 最多14张，Gemini 2.5: 建议不超过4张）。超出限制的将自动忽略",
+        "default": 6
+      },
+      "enable_text_response": {
+        "description": "启用文本响应",
+        "type": "bool",
+        "hint": "启用后模型将在返回图片的同时返回文本说明。关闭后只返回图片（仅限gemini 3有效）",
+        "default": false
+      }
+    }
+  },
+  "retry_settings": {
+    "description": "重试设置",
+    "type": "object",
+    "hint": "配置 API 调用失败时的重试策略",
+    "items": {
+      "max_attempts_per_key": {
+        "description": "每个 API 密钥的最大重试次数",
+        "type": "int",
+        "hint": "当 API 请求失败时，每个密钥最多重试几次。设置为1表示不重试，直接切换密钥。推荐2-5次",
+        "default": 3
+      },
+      "enable_smart_retry": {
+        "description": "启用智能重试（区分错误类型）",
+        "type": "bool",
+        "hint": "启用后会对不同错误类型采用不同策略：额度/速率限制直接切换密钥，网络错误进行重试",
+        "default": true
+      }
+    }
+  },
+  "service_settings": {
+    "description": "服务设置",
+    "type": "object",
+    "hint": "配置文件传输等外部服务",
+    "items": {
+      "nap_server_address": {
+        "description": "NAP cat 服务地址",
+        "type": "string",
+        "hint": "仅当 NAP 和机器人不在同一服务器时填写，同服务器填写 localhost",
+        "default": "localhost"
+      },
+      "nap_server_port": {
+        "description": "文件传输端口",
+        "type": "int",
+        "hint": "NAP cat 所处服务器接收文件端口，在同一服务器上可以不填",
+        "default": 3658
+      },
+      "auto_avatar_reference": {
+        "description": "自动头像参考",
+        "type": "bool",
+        "hint": "启用后，当消息包含头像相关关键词时，自动获取群头像和用户头像作为参考图像。仅支持 NapCat 平台",
+        "default": false
+      },
+      "verbose_logging": {
+        "description": "详细的日志输出",
+        "type": "bool",
+        "hint": "启用后显示详细的运行日志，包括API调用时间、文件传输状态等。关闭后只有开启debug档才显示",
+        "default": false
+      }
+    }
+  }
+}
