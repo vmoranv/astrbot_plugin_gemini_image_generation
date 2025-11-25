@@ -239,7 +239,7 @@ class GeminiAPIClient:
                     {"type": "image_url", "image_url": {"url": image_str}}
                 )
 
-        # OpenAI 兼容接口下，参考前端 router 的实现：
+        # OpenAI 兼容接口下：
         # - 使用 chat/completions
         # - modalities: ["image", "text"]
         # - image_config: {aspect_ratio, image_size}
