@@ -31,7 +31,7 @@ from .tl.tl_utils import AvatarManager, download_qq_avatar, send_file
     "astrbot_plugin_gemini_image_generation",
     "piexian",
     "Gemini图像生成插件，支持生图和改图，可以自动获取头像作为参考",
-    "v1.3.0",
+    "v1.4.0",
 )
 class GeminiImageGenerationPlugin(Star):
     def __init__(self, context: Context, config: dict[str, Any]):
@@ -974,7 +974,7 @@ class GeminiImageGenerationPlugin(Star):
         tool_timeout = self.get_tool_timeout(event)
         timeout_warning = ""
         if tool_timeout < 90:
-            timeout_warning = f"⚠ 超时时间较短({tool_timeout}秒)，建议设置为90-120秒"
+            timeout_warning = f"⚠️ LLM工具超时时间较短({tool_timeout}秒)，建议设置为90-120秒"
 
         try:
             import yaml
@@ -986,325 +986,100 @@ class GeminiImageGenerationPlugin(Star):
         except Exception:
             version = "v1.3.0"
 
-        markdown_content = rf"""# 🎨 Gemini 图像生成插件 {version}
-
-## 系统状态
-
-- **模型**: `{self.model}`
-- **API类型**: `{self.api_type}`
-- **分辨率**: `{self.resolution}`
-- **长宽比**: `{self.aspect_ratio or "默认"}`
-- **API密钥**: `{len(self.api_keys)}个`
-- **搜索接地**: {grounding_status}
-- **自动头像**: {avatar_status}
-- **智能重试**: {smart_retry_status}
-- **超时时间**: `{tool_timeout}秒`
-- **端点**: `{self.api_base or "默认"}`"""
-
-        if timeout_warning:
-            markdown_content += f"\n\n> ⚠️ 警告: {timeout_warning}"
-
-        markdown_content += """
-
-## 🚀 指令使用
-
-```
-/生图 [描述]
-```
-> 基础图像生成功能
-> 示例: `/生图 一只可爱的橙色小猫，动漫风格，高清细节`
-
-```
-/快速 [预设] [描述]
-```
-> 使用预设参数快速生成图像
-> 预设: 头像/海报/壁纸/卡片/手机/手办化
-> 示例: `/快速 头像 生成专业的个人头像`
-
-```
-/改图 [描述]
-```
-> 修改或重做图像（需要提供参考图片）
-> 示例: 发送图片 + `/改图 把头发改成红色`
-
-```
-/换风格 [风格] [描述]
-```
-> 改变图像风格
-> 示例: 发送图片 + `/换风格 动漫`
-> 示例: 发送图片 + `/换风格 油画 古典艺术风格`
-
-```
-/生图帮助
-```
-> 显示此帮助信息
-
-## ⭐ 进阶功能
-
-- **引用图片**: 回复或引用图片自动作为参考图使用
-- **@用户**: @某人会使用该用户头像作为参考（需要先获取头像权限）
-- **关键词触发**: 包含"我"、"头像"、"自己"等关键词自动获取发送者头像
-- **多风格支持**: 支持动漫、写实、水彩、油画等多种风格
-- **智能重试**: 生成失败时自动重试，提高成功率
-
-## 💡 使用技巧
-
-- 提示词越详细，生成效果越好
-- 生成高质量图像需要时间，请耐心等待
-- 建议添加多个API密钥以提高成功率
-- 快速模式预设了最佳分辨率和长宽比
-- 工具超时时间建议设置为90-120秒
-
----
-
-> 🤖 *由 Gemini AI 驱动的图像生成插件*"""
-
         try:
-            logger.info("开始生成HTML帮助图片...")
+            from datetime import datetime
 
-            jinja2_template = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>{{ title }}</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+            # 获取主题配置
+            service_settings = self.config.get("service_settings", {})
+            theme_settings = service_settings.get("theme_settings", {})
+            enable_auto_theme = theme_settings.get("enable_auto_theme", True)
+            day_theme_start = theme_settings.get("day_theme_start", 6)
+            day_theme_end = theme_settings.get("day_theme_end", 18)
+            manual_theme = theme_settings.get("manual_theme", "light")
 
-        body {
-            background-color: #E6F3FF;
-            font-family: 'Share Tech Mono', 'Consolas', 'Courier New', monospace;
-            color: #1a5490;
-            padding: 20px;
-            line-height: 1.6;
-            margin: 0;
-        }
+            # 判断当前应该使用的主题
+            if enable_auto_theme:
+                # 自动主题切换
+                current_hour = datetime.now().hour
+                is_daytime = day_theme_start <= current_hour < day_theme_end
+                use_light_theme = is_daytime
+            else:
+                # 手动指定主题
+                use_light_theme = (manual_theme == "light")
 
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background-color: rgba(255, 255, 255, 0.95);
-            border: 2px solid #4a90e2;
-            border-radius: 8px;
-            padding: 20px;
-            box-shadow: 0 0 20px rgba(74, 144, 226, 0.3);
-        }
+            if use_light_theme:
+                # 白色主题配置
+                template_data = {
+                    "title": f"Gemini 图像生成插件 {version}",
+                    "background_color": "#E6F3FF",
+                    "text_color": "#1a5490",
+                    "container_bg": "rgba(255, 255, 255, 0.95)",
+                    "border_color": "#4a90e2",
+                    "box_shadow": "0 0 20px rgba(74, 144, 226, 0.3)",
+                    "scanline_color": "rgba(74, 144, 226, 0)",
+                    "header_color": "#2c5aa0",
+                    "header_shadow": "rgba(44, 90, 160, 0.3)",
+                    "version_color": "#4a90e2",
+                    "section_border": "#4a90e2",
+                    "section_title_color": "#2c5aa0",
+                    "section_title_shadow": "rgba(44, 90, 160, 0.2)",
+                    "status_text_color": "#2c5aa0",
+                    "status_ok_color": "#28a745",
+                    "status_warning_color": "#ffc107",
+                    "status_error_color": "#dc3545",
+                    "command_border": "rgba(74, 144, 226, 0.2)",
+                    "command_name_color": "#2c5aa0",
+                    "command_desc_color": "#1a5490",
+                    "example_color": "#6c757d",
+                    "feature_text_color": "#1a5490",
+                    "feature_icon_color": "#4a90e2",
+                    "tip_text_color": "#2c5aa0",
+                    "tip_icon_color": "#6f42c1",
+                    "warning_text_color": "#856404",
+                    "warning_bg_color": "#fff3cd",
+                    "warning_border_color": "#ffeaa7",
+                    "scanlines_enabled": True,
+                    "pulse_enabled": True,
+                    "flicker_enabled": True,
+                }
+            else:
+                # 黑色主题配置
+                template_data = {
+                    "title": f"Gemini 图像生成插件 {version}",
+                    "background_color": "#1a1a1a",
+                    "text_color": "#e0e0e0",
+                    "container_bg": "rgba(40, 40, 40, 0.95)",
+                    "border_color": "#00bcd4",
+                    "box_shadow": "0 0 20px rgba(0, 188, 212, 0.3)",
+                    "scanline_color": "rgba(0, 188, 212, 0)",
+                    "header_color": "#00bcd4",
+                    "header_shadow": "rgba(0, 188, 212, 0.3)",
+                    "version_color": "#00acc1",
+                    "section_border": "#00bcd4",
+                    "section_title_color": "#00bcd4",
+                    "section_title_shadow": "rgba(0, 188, 212, 0.2)",
+                    "status_text_color": "#e0e0e0",
+                    "status_ok_color": "#4caf50",
+                    "status_warning_color": "#ff9800",
+                    "status_error_color": "#f44336",
+                    "command_border": "rgba(0, 188, 212, 0.2)",
+                    "command_name_color": "#00bcd4",
+                    "command_desc_color": "#b0bec5",
+                    "example_color": "#757575",
+                    "feature_text_color": "#b0bec5",
+                    "feature_icon_color": "#00bcd4",
+                    "tip_text_color": "#e0e0e0",
+                    "tip_icon_color": "#9c27b0",
+                    "warning_text_color": "#ff9800",
+                    "warning_bg_color": "#4e342e",
+                    "warning_border_color": "#ff6f00",
+                    "scanlines_enabled": True,
+                    "pulse_enabled": True,
+                    "flicker_enabled": True,
+                }
 
-        .header {
-            color: #2c5aa0;
-            border-bottom: 2px solid #4a90e2;
-            padding-bottom: 15px;
-            margin-bottom: 25px;
-            text-align: center;
-        }
-
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-            text-shadow: 0 0 3px rgba(44, 90, 160, 0.2);
-        }
-
-        .section {
-            margin: 20px 0;
-            padding: 15px;
-            border-left: 3px solid #4a90e2;
-            background-color: rgba(230, 243, 255, 0.3);
-            border-radius: 0 5px 5px 0;
-        }
-
-        .section h2 {
-            color: #2c5aa0;
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 20px;
-            text-shadow: 0 0 3px rgba(44, 90, 160, 0.2);
-        }
-
-        .section h3 {
-            color: #4a90e2;
-            margin-top: 15px;
-            margin-bottom: 8px;
-            font-size: 16px;
-        }
-
-        .command {
-            color: #2c5aa0;
-            background-color: rgba(74, 144, 226, 0.1);
-            padding: 4px 8px;
-            border-radius: 4px;
-            border: 1px solid #4a90e2;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .example {
-            color: #6c757d;
-            font-style: italic;
-            margin: 8px 0;
-            padding-left: 15px;
-            border-left: 2px solid #6c757d;
-        }
-
-        .feature {
-            color: #4a90e2;
-            font-weight: bold;
-        }
-
-        .status {
-            background-color: rgba(230, 243, 255, 0.5);
-            border: 1px solid #4a90e2;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-
-        .status-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px 20px;
-        }
-
-        .status-item {
-            margin: 8px 0;
-            color: #1a5490;
-        }
-
-        .status-item strong {
-            color: #2c5aa0;
-        }
-
-        .warning {
-            color: #856404;
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-left: 4px solid #ffc107;
-            padding: 12px;
-            border-radius: 4px;
-            margin: 15px 0;
-        }
-
-        .warning strong {
-            color: #856404;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #4a90e2;
-            color: #6c757d;
-        }
-
-        ul, ol {
-            margin: 10px 0;
-            padding-left: 25px;
-        }
-
-        li {
-            margin: 8px 0;
-        }
-
-        p {
-            margin: 10px 0;
-        }
-
-        strong {
-            color: #2c5aa0;
-        }
-
-        hr {
-            border: none;
-            border-top: 1px solid #4a90e2;
-            margin: 20px 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🎨 Gemini 图像生成插件 {{ version }}</h1>
-        </div>
-
-        <div class="section">
-            <h2>▶ 系统状态</h2>
-            <div class="status">
-                <div class="status-grid">
-                    <div class="status-item"><strong>模型</strong>: {{ model }}</div>
-                    <div class="status-item"><strong>API类型</strong>: {{ api_type }}</div>
-                    <div class="status-item"><strong>分辨率</strong>: {{ resolution }}</div>
-                    <div class="status-item"><strong>长宽比</strong>: {{ aspect_ratio }}</div>
-                    <div class="status-item"><strong>API密钥</strong>: {{ api_keys_count }}个</div>
-                    <div class="status-item"><strong>搜索接地</strong>: {{ grounding_status }}</div>
-                    <div class="status-item"><strong>自动头像</strong>: {{ avatar_status }}</div>
-                    <div class="status-item"><strong>智能重试</strong>: {{ smart_retry_status }}</div>
-                    <div class="status-item"><strong>超时时间</strong>: {{ tool_timeout }}秒</div>
-                    <div class="status-item"><strong>端点</strong>: {{ api_base }}</div>
-                    <div class="status-item"><strong>速率限制</strong>: {{ rate_limit_status }}</div>
-                </div>
-            </div>
-            {% if timeout_warning %}
-            <div class="warning">
-                <strong>⚠️ 警告</strong>: {{ timeout_warning }}
-            </div>
-            {% endif %}
-        </div>
-
-        <div class="section">
-            <h2>🚀 指令使用</h2>
-
-            <h3><span class="command">/生图 [描述]</span></h3>
-            <p>基础图像生成功能</p>
-            <p class="example">示例: /生图 一只可爱的橙色小猫，动漫风格，高清细节</p>
-
-            <h3><span class="command">/快速 [预设] [描述]</span></h3>
-            <p>使用预设参数快速生成图像</p>
-            <p class="example">预设: 头像/海报/壁纸/卡片/手机/手办化</p>
-            <p class="example">示例: /快速 头像 生成专业的个人头像</p>
-
-            <h3><span class="command">/改图 [描述]</span></h3>
-            <p>修改或重做图像（需要提供参考图片）</p>
-            <p class="example">示例: 发送图片 + /改图 把头发改成红色</p>
-
-            <h3><span class="command">/换风格 [风格] [描述]</span></h3>
-            <p>改变图像风格</p>
-            <p class="example">示例: 发送图片 + /换风格 动漫</p>
-            <p class="example">示例: 发送图片 + /换风格 油画 古典艺术风格</p>
-
-            <h3><span class="command">/生图帮助</span></h3>
-            <p>显示此帮助信息</p>
-        </div>
-
-        <div class="section">
-            <h2>⭐ 进阶功能</h2>
-            <ul>
-                <li><span class="feature">引用图片</span>: 回复或引用图片自动作为参考图使用</li>
-                <li><span class="feature">@用户</span>: @某人会使用该用户头像作为参考（需要先获取头像权限）</li>
-                <li><span class="feature">关键词触发</span>: 包含"我"、"头像"、"自己"等关键词自动获取发送者头像</li>
-                <li><span class="feature">多风格支持</span>: 支持动漫、写实、水彩、油画等多种风格</li>
-                <li><span class="feature">智能重试</span>: 生成失败时自动重试，提高成功率</li>
-            </ul>
-        </div>
-
-        <div class="section">
-            <h2>💡 使用技巧</h2>
-            <ul>
-                <li>提示词越详细，生成效果越好</li>
-                <li>生成高质量图像需要时间，请耐心等待</li>
-                <li>建议添加多个API密钥以提高成功率</li>
-                <li>快速模式预设了最佳分辨率和长宽比</li>
-                <li>工具超时时间建议设置为90-120秒</li>
-            </ul>
-        </div>
-
-        <div class="footer">
-            <p>🤖 由 Gemini AI 驱动的图像生成插件</p>
-        </div>
-    </div>
-</body>
-</html>"""
-
-            template_data = {
-                "title": f"Gemini 图像生成插件 {version}",
-                "version": version,
+            # 添加通用数据
+            template_data.update({
                 "model": self.model,
                 "api_type": self.api_type,
                 "resolution": self.resolution,
@@ -1314,14 +1089,19 @@ class GeminiImageGenerationPlugin(Star):
                 "avatar_status": avatar_status,
                 "smart_retry_status": smart_retry_status,
                 "tool_timeout": tool_timeout,
-                "api_base": self.api_base or "默认",
                 "rate_limit_status": rate_limit_status,
                 "timeout_warning": timeout_warning if timeout_warning else ""
-            }
+            })
 
-            help_image_url = await self.html_render(jinja2_template, template_data)
+            # 读取模板文件
+            template_path = os.path.join(os.path.dirname(__file__), "templates", "help_template.html")
+            with open(template_path, encoding="utf-8") as f:
+                jinja2_template = f.read()
+
+            # 使用AstrBot的html_render方法
+            html_image_url = await self.html_render(jinja2_template, template_data)
             logger.info("HTML帮助图片生成成功")
-            yield event.image_result(help_image_url)
+            yield event.image_result(html_image_url)
 
         except Exception as e:
             logger.error(f"HTML帮助图片生成失败: {e}")
@@ -1340,6 +1120,7 @@ class GeminiImageGenerationPlugin(Star):
 • 模型: {self.model}
 • 分辨率: {self.resolution}
 • API密钥: {len(self.api_keys)}个
+• LLM工具超时: {tool_timeout}秒
 
 系统状态:
 • 搜索接地: {grounding_status}

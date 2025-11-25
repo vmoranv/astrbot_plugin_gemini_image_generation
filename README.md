@@ -1,8 +1,8 @@
-# AstrBot Gemini 图像生成插件 v1.3.0
+# AstrBot Gemini 图像生成插件 v1.4.0
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-v1.3.0-blue)
+![Version](https://img.shields.io/badge/Version-v1.4.0-blue)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 **🎨 强大的 Gemini 图像生成插件，支持智能头像参考和多模式生成**
@@ -37,6 +37,11 @@
 - **Google 搜索接地**: 实时数据参考生成
 - **智能重试**: 自动重试机制，提高成功率
 - **超时管理**: 适配框架超时控制
+- **主题配置**: 可配置的白天/黑夜主题自动切换
+  - **自动主题切换**: 根据时间自动选择白色/黑色主题
+  - **自定义时间段**: 可设置白天开始和结束时间（0-23点）
+  - **手动主题模式**: 可强制使用指定主题（白色/黑色）
+  - **动态渲染**: 帮助页面会根据时间或配置动态显示对应主题
 
 ## 📦 安装
 
@@ -364,7 +369,11 @@
 - [NapCat](https://napneko.github.io/) - OneBot v11 实现
 
 **特别感谢贡献者**:
-- [@exynos967](https://github.com/exynos967) - 限制/限流设置和手办化功能（PR#1）、OpenAI兼容接口分辨率比例修复和混合响应格式支持（PR#3）
+- [@exynos967](https://github.com/exynos967) - 多个重要功能和修复
+  - **[PR#1](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/1)**: 限制/限流设置和手办化功能
+  - **[PR#2](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/2)**: 兼容 OpenAI/Gemini混合url响应格式
+  - **[PR#3](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/3)**: 兼容 OpenAI 传入参数
+  - **[PR#4](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/4)**: 手办化命令使用专用提示词
 
 ## 📞 联系支持
 

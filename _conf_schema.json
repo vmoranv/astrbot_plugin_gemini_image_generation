@@ -144,6 +144,43 @@
         "type": "bool",
         "hint": "启用后显示详细的运行日志，包括API调用时间、文件传输状态等。关闭后只有开启debug档才显示",
         "default": false
+      },
+      "theme_settings": {
+        "description": "主题设置",
+        "type": "object",
+        "hint": "配置帮助页面的主题切换和显示效果",
+        "items": {
+          "enable_auto_theme": {
+            "description": "启用自动主题切换",
+            "type": "bool",
+            "hint": "启用后根据时间自动切换白天/黑夜主题，关闭后使用手动指定的主题",
+            "default": true
+          },
+          "day_theme_start": {
+            "description": "白天主题开始时间",
+            "type": "int",
+            "hint": "选择白天主题开始的小时数（0-23点）",
+            "default": 6,
+            "options": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+          },
+          "day_theme_end": {
+            "description": "白天主题结束时间",
+            "type": "int",
+            "hint": "选择白天主题结束的小时数（0-23点）",
+            "default": 18,
+            "options": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+          },
+          "manual_theme": {
+            "description": "手动指定主题",
+            "type": "string",
+            "hint": "当自动主题切换关闭时，强制使用的主题",
+            "default": "light",
+            "options": [
+              "light",
+              "dark"
+            ]
+          }
+        }
       }
     }
   },

@@ -17,16 +17,9 @@ from astrbot.api import logger
 
 def get_plugin_data_dir() -> Path:
     """获取插件数据目录"""
-    # 尝试使用AstrBot的StarTools
-    try:
-        from astrbot.api.star import StarTools
-        return StarTools.get_data_dir("astrbot_plugin_gemini_image_generation")
-    except ImportError:
-        # 如果不可用，使用当前目录下的data文件夹
-        current_dir = Path(__file__).parent.parent
-        data_dir = current_dir / "data"
-        data_dir.mkdir(exist_ok=True)
-        return data_dir
+    # 使用AstrBot的StarTools获取标准数据目录
+    from astrbot.api.star import StarTools
+    return StarTools.get_data_dir("astrbot_plugin_gemini_image_generation")
 
 
 async def save_base64_image(base64_data: str, image_format: str = "png") -> str | None:
