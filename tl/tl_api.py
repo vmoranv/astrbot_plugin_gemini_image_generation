@@ -706,11 +706,23 @@ class GeminiAPIClient:
             elif isinstance(content, str):
                 text_chunks.append(content)
 
-            # 标准 images 字段
+            # 标准 images 字段（兼容 Gemini/OpenAI 混合格式）
             if "images" in message and message["images"]:
                 for image_item in message["images"]:
-                    if "image_url" in image_item and image_item["image_url"]:
-                        image_candidates.append(image_item["image_url"])
+                    if not isinstance(image_item, dict):
+                        continue
+
+                    # 典型格式：{"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+                    image_obj = image_item.get("image_url")
+                    if isinstance(image_obj, dict):
+                        url_val = image_obj.get("url")
+                        if isinstance(url_val, str) and url_val:
+                            image_candidates.append(url_val)
+                    elif isinstance(image_obj, str) and image_obj:
+                        image_candidates.append(image_obj)
+                    # 退化格式：{"url": "..."}
+                    elif isinstance(image_item.get("url"), str):
+                        image_candidates.append(image_item["url"])
 
             # 组装文本内容
             if text_chunks:
