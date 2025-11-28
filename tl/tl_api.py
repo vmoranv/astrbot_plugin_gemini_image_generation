@@ -130,13 +130,13 @@ class GeminiAPIClient:
                 )
 
     @staticmethod
-    def _prepare_google_payload(config: ApiRequestConfig) -> dict[str, Any]:
+    async def _prepare_google_payload(config: ApiRequestConfig) -> dict[str, Any]:
         """准备 Google 官方 API 请求负载（遵循官方规范）"""
         parts = [{"text": config.prompt}]
 
         if config.reference_images:
             for base64_image in config.reference_images[:14]:
-                mime_type, data = GeminiAPIClient._normalize_image_input(base64_image)
+                mime_type, data = await GeminiAPIClient._normalize_image_input(base64_image)
                 if not data:
                     logger.warning(f"跳过无法识别/读取的参考图像: {type(base64_image)}")
                     continue
@@ -238,7 +238,7 @@ class GeminiAPIClient:
         return payload
 
     @staticmethod
-    def _prepare_openrouter_payload(config: ApiRequestConfig) -> dict[str, Any]:
+    async def _prepare_openrouter_payload(config: ApiRequestConfig) -> dict[str, Any]:
         """准备 OpenRouter API 请求负载"""
         message_content = [
             {"type": "text", "text": f"Generate an image: {config.prompt}"}
@@ -246,7 +246,7 @@ class GeminiAPIClient:
 
         if config.reference_images:
             for base64_image in config.reference_images[:6]:
-                mime_type, data = GeminiAPIClient._normalize_image_input(base64_image)
+                mime_type, data = await GeminiAPIClient._normalize_image_input(base64_image)
                 if not data:
                     logger.warning(f"跳过无法识别/读取的参考图像: {type(base64_image)}")
                     continue
@@ -297,7 +297,7 @@ class GeminiAPIClient:
         return payload
 
     @staticmethod
-    def _normalize_image_input(image_input: Any) -> tuple[str | None, str | None]:
+    async def _normalize_image_input(image_input: Any) -> tuple[str | None, str | None]:
         """
         将参考图像输入规范化为 (mime_type, base64_data)。
         支持 data URI、纯/宽松 base64 字符串、本地文件路径、file://、http/https URL。
@@ -335,15 +335,20 @@ class GeminiAPIClient:
             # http(s) URL -> 下载并转base64
             if image_str.startswith("http://") or image_str.startswith("https://"):
                 try:
-                    with urllib.request.urlopen(image_str, timeout=8) as resp:
-                        content_type = resp.headers.get("Content-Type", "image/png")
-                        mime_type = (
-                            content_type.split(";")[0] if content_type else "image/png"
-                        )
-                        data_bytes = resp.read()
-                        if data_bytes:
-                            data = base64.b64encode(data_bytes).decode("utf-8")
-                            return mime_type, data
+                    timeout = aiohttp.ClientTimeout(total=8)
+                    async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
+                        async with session.get(image_str) as resp:
+                            if resp.status == 200:
+                                content_type = resp.headers.get("Content-Type", "image/png")
+                                mime_type = (
+                                    content_type.split(";")[0] if content_type else "image/png"
+                                )
+                                data_bytes = await resp.read()
+                                if data_bytes:
+                                    data = base64.b64encode(data_bytes).decode("utf-8")
+                                    return mime_type, data
+                            else:
+                                logger.warning(f"下载图片失败: HTTP {resp.status}")
                 except Exception as e:
                     logger.warning(f"下载参考图失败: {e}")
 
@@ -384,7 +389,7 @@ class GeminiAPIClient:
             logger.warning(f"参考图像规范化失败: {e}")
             return None, None
 
-    def _get_api_url(
+    async def _get_api_url(
         self, config: ApiRequestConfig
     ) -> tuple[str, dict[str, str], dict[str, Any]]:
         """
@@ -407,14 +412,14 @@ class GeminiAPIClient:
         # 准备请求
         if config.api_type == "google":
             url = f"{api_base}/models/{config.model}:generateContent"
-            payload = self._prepare_google_payload(config)
+            payload = await self._prepare_google_payload(config)
             headers = {
                 "x-goog-api-key": config.api_key,
                 "Content-Type": "application/json",
             }
         else:
             url = f"{api_base}/chat/completions"
-            payload = self._prepare_openrouter_payload(config)
+            payload = await self._prepare_openrouter_payload(config)
             headers = {
                 "Authorization": f"Bearer {config.api_key}",
                 "Content-Type": "application/json",
@@ -452,7 +457,7 @@ class GeminiAPIClient:
             config.api_key = await self.get_next_api_key()
 
         # 获取请求信息
-        url, headers, payload = self._get_api_url(config)
+        url, headers, payload = await self._get_api_url(config)
 
         logger.debug(f"使用 {config.model} (通过 {config.api_type}) 生成图像")
         logger.debug(f"API 端点: {url[:80]}...")

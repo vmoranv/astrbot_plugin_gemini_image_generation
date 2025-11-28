@@ -53,7 +53,7 @@ from .tl.tl_utils import (
     "astrbot_plugin_gemini_image_generation",
     "piexian",
     "Gemini图像生成插件，支持生图和改图，可以自动获取头像作为参考",
-    "v1.5.1",
+    "v1.5.2",
 )
 class GeminiImageGenerationPlugin(Star):
     def __init__(self, context: Context, config: dict[str, Any]):
@@ -89,11 +89,12 @@ class GeminiImageGenerationPlugin(Star):
         self._cleanup_task = asyncio.create_task(cleanup_loop())
         logger.debug("定时清理任务已启动")
 
-    def terminate(self):
+    async def terminate(self):
         """插件卸载/重载时调用"""
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
             logger.debug("定时清理任务已停止")
+        logger.info("🎨 Gemini 图像生成插件已卸载")
 
     def get_tool_timeout(self, event: AstrMessageEvent | None = None) -> int:
         """获取当前聊天环境的 tool_call_timeout 配置"""
@@ -509,7 +510,12 @@ class GeminiImageGenerationPlugin(Star):
                     logger.debug(f"跳过非HTTP/base64格式的图片源: {img_source[:64]}...")
                     return None
             except Exception as e:
-                logger.warning(f"转换图片为base64失败: {e}")
+                import traceback
+
+                logger.warning(
+                    f"转换图片为base64失败: {repr(e)} | Source: {str(img_source)[:100]}"
+                )
+                logger.debug(traceback.format_exc())
                 return None
 
         for component in message_chain:
@@ -580,13 +586,13 @@ class GeminiImageGenerationPlugin(Star):
         if not self.api_client:
             return False, "❌ 错误: API 客户端未初始化，请联系管理员配置 API 密钥"
 
-        all_reference_images: list[str] = []
-        all_reference_images.extend(
-            self._filter_valid_reference_images(reference_images, source="消息图片")
+        valid_msg_images = self._filter_valid_reference_images(
+            reference_images, source="消息图片"
         )
-        all_reference_images.extend(
-            self._filter_valid_reference_images(avatar_reference, source="头像")
+        valid_avatar_images = self._filter_valid_reference_images(
+            avatar_reference, source="头像"
         )
+        all_reference_images = valid_msg_images + valid_avatar_images
 
         if (
             all_reference_images
@@ -596,6 +602,16 @@ class GeminiImageGenerationPlugin(Star):
                 f"参考图片数量 ({len(all_reference_images)}) 超过限制 ({self.max_reference_images})，将截取前 {self.max_reference_images} 张"
             )
             all_reference_images = all_reference_images[: self.max_reference_images]
+
+        # 计算截断后的数量
+        final_msg_count = min(len(valid_msg_images), len(all_reference_images))
+        final_avatar_count = len(all_reference_images) - final_msg_count
+
+        if final_avatar_count > 0:
+            prompt += f"""
+
+[System Note]
+The last {final_avatar_count} image(s) provided are User Avatars (marked as optional reference). You may use them for character consistency if needed, but they are NOT mandatory if they conflict with the requested style."""
 
         response_modalities = "TEXT_IMAGE" if self.enable_text_response else "IMAGE"
         request_config = ApiRequestConfig(
@@ -850,6 +866,49 @@ class GeminiImageGenerationPlugin(Star):
         ):
             yield result
 
+    async def _handle_quick_mode(
+        self,
+        event: AstrMessageEvent,
+        prompt: str,
+        resolution: str,
+        aspect_ratio: str,
+        mode_name: str,
+        prompt_func: Any = None,
+        **kwargs,
+    ):
+        """处理快速模式的通用逻辑"""
+        allowed, limit_message = await self._check_and_consume_limit(event)
+        if not allowed:
+            if limit_message:
+                yield event.plain_result(limit_message)
+            return
+
+        yield event.plain_result(f"🎨 使用{mode_name}模式生成图像...")
+
+        old_resolution = self.resolution
+        old_aspect_ratio = self.aspect_ratio
+
+        try:
+            self.resolution = resolution
+            self.aspect_ratio = aspect_ratio
+
+            # 使用新提示词函数
+            if prompt_func:
+                full_prompt = prompt_func(prompt)
+            else:
+                full_prompt = prompt
+
+            use_avatar = await self.should_use_avatar(event)
+
+            async for result in self._quick_generate_image(
+                event, full_prompt, use_avatar, **kwargs
+            ):
+                yield result
+
+        finally:
+            self.resolution = old_resolution
+            self.aspect_ratio = old_aspect_ratio
+
     @filter.command_group("快速")
     def quick_mode_group(self):
         """快速模式指令组"""
@@ -858,174 +917,46 @@ class GeminiImageGenerationPlugin(Star):
     @quick_mode_group.command("头像")
     async def quick_avatar(self, event: AstrMessageEvent, prompt: str):
         """头像快速模式 - 1K分辨率，1:1比例"""
-        allowed, limit_message = await self._check_and_consume_limit(event)
-        if not allowed:
-            if limit_message:
-                yield event.plain_result(limit_message)
-            return
-
-        yield event.plain_result("🎨 使用头像模式生成图像...")
-
-        old_resolution = self.resolution
-        old_aspect_ratio = self.aspect_ratio
-
-        try:
-            self.resolution = "1K"
-            self.aspect_ratio = "1:1"
-
-            # 使用新提示词函数
-            full_prompt = get_avatar_prompt(prompt)
-
-            use_avatar = await self.should_use_avatar(event)
-
-            async for result in self._quick_generate_image(
-                event, full_prompt, use_avatar
-            ):
-                yield result
-
-        finally:
-            self.resolution = old_resolution
-            self.aspect_ratio = old_aspect_ratio
+        async for result in self._handle_quick_mode(
+            event, prompt, "1K", "1:1", "头像", get_avatar_prompt
+        ):
+            yield result
 
     @quick_mode_group.command("海报")
     async def quick_poster(self, event: AstrMessageEvent, prompt: str):
         """海报快速模式 - 2K分辨率，16:9比例"""
-        allowed, limit_message = await self._check_and_consume_limit(event)
-        if not allowed:
-            if limit_message:
-                yield event.plain_result(limit_message)
-            return
-
-        yield event.plain_result("🎨 使用海报模式生成图像...")
-
-        old_resolution = self.resolution
-        old_aspect_ratio = self.aspect_ratio
-
-        try:
-            self.resolution = "2K"
-            self.aspect_ratio = "16:9"
-
-            # 使用新提示词函数
-            full_prompt = get_poster_prompt(prompt)
-
-            use_avatar = await self.should_use_avatar(event)
-
-            async for result in self._quick_generate_image(
-                event, full_prompt, use_avatar
-            ):
-                yield result
-
-        finally:
-            self.resolution = old_resolution
-            self.aspect_ratio = old_aspect_ratio
+        async for result in self._handle_quick_mode(
+            event, prompt, "2K", "16:9", "海报", get_poster_prompt
+        ):
+            yield result
 
     @quick_mode_group.command("壁纸")
     async def quick_wallpaper(self, event: AstrMessageEvent, prompt: str):
         """壁纸快速模式 - 4K分辨率，16:9比例"""
-        allowed, limit_message = await self._check_and_consume_limit(event)
-        if not allowed:
-            if limit_message:
-                yield event.plain_result(limit_message)
-            return
-
-        yield event.plain_result("🎨 使用壁纸模式生成图像...")
-
-        old_resolution = self.resolution
-        old_aspect_ratio = self.aspect_ratio
-
-        try:
-            self.resolution = "4K"
-            self.aspect_ratio = "16:9"
-
-            # 使用新提示词函数
-            full_prompt = get_wallpaper_prompt(prompt)
-
-            use_avatar = await self.should_use_avatar(event)
-
-            async for result in self._quick_generate_image(
-                event, full_prompt, use_avatar
-            ):
-                yield result
-
-        finally:
-            self.resolution = old_resolution
-            self.aspect_ratio = old_aspect_ratio
+        async for result in self._handle_quick_mode(
+            event, prompt, "4K", "16:9", "壁纸", get_wallpaper_prompt
+        ):
+            yield result
 
     @quick_mode_group.command("卡片")
     async def quick_card(self, event: AstrMessageEvent, prompt: str):
         """卡片快速模式 - 1K分辨率，3:2比例"""
-        allowed, limit_message = await self._check_and_consume_limit(event)
-        if not allowed:
-            if limit_message:
-                yield event.plain_result(limit_message)
-            return
-
-        yield event.plain_result("🎨 使用卡片模式生成图像...")
-
-        old_resolution = self.resolution
-        old_aspect_ratio = self.aspect_ratio
-
-        try:
-            self.resolution = "1K"
-            self.aspect_ratio = "3:2"
-
-            # 使用新提示词函数
-            full_prompt = get_card_prompt(prompt)
-
-            use_avatar = await self.should_use_avatar(event)
-
-            async for result in self._quick_generate_image(
-                event, full_prompt, use_avatar
-            ):
-                yield result
-
-        finally:
-            self.resolution = old_resolution
-            self.aspect_ratio = old_aspect_ratio
+        async for result in self._handle_quick_mode(
+            event, prompt, "1K", "3:2", "卡片", get_card_prompt
+        ):
+            yield result
 
     @quick_mode_group.command("手机")
     async def quick_mobile(self, event: AstrMessageEvent, prompt: str):
         """手机快速模式 - 2K分辨率，9:16比例"""
-        allowed, limit_message = await self._check_and_consume_limit(event)
-        if not allowed:
-            if limit_message:
-                yield event.plain_result(limit_message)
-            return
-
-        yield event.plain_result("🎨 使用手机模式生成图像...")
-
-        old_resolution = self.resolution
-        old_aspect_ratio = self.aspect_ratio
-
-        try:
-            self.resolution = "2K"
-            self.aspect_ratio = "9:16"
-
-            # 使用新提示词函数
-            full_prompt = get_mobile_prompt(prompt)
-
-            use_avatar = await self.should_use_avatar(event)
-
-            async for result in self._quick_generate_image(
-                event, full_prompt, use_avatar
-            ):
-                yield result
-
-        finally:
-            self.resolution = old_resolution
-            self.aspect_ratio = old_aspect_ratio
+        async for result in self._handle_quick_mode(
+            event, prompt, "2K", "9:16", "手机", get_mobile_prompt
+        ):
+            yield result
 
     @quick_mode_group.command("手办化")
     async def quick_figure(self, event: AstrMessageEvent, prompt: str):
         """手办化快速模式 - 树脂收藏级手办效果"""
-        allowed, limit_message = await self._check_and_consume_limit(event)
-        if not allowed:
-            if limit_message:
-                yield event.plain_result(limit_message)
-            return
-
-        yield event.plain_result("🎨 使用手办化模式生成图像...")
-
         # 解析参数
         style_type = 1
         clean_prompt = prompt
@@ -1041,25 +972,19 @@ class GeminiImageGenerationPlugin(Star):
 
         full_prompt = get_figure_prompt(clean_prompt, style_type)
 
-        old_resolution = self.resolution
-        old_aspect_ratio = self.aspect_ratio
-
-        try:
-            self.resolution = "2K"
-            self.aspect_ratio = "3:2"
-
-            use_avatar = await self.should_use_avatar(event)
-
-            async for result in self._quick_generate_image(
-                event, full_prompt, use_avatar, True
-            ):
-                yield result
-        finally:
-            self.resolution = old_resolution
-            self.aspect_ratio = old_aspect_ratio
+        async for result in self._handle_quick_mode(
+            event,
+            full_prompt,
+            "2K",
+            "3:2",
+            "手办化",
+            None,
+            skip_figure_enhance=True,
+        ):
+            yield result
 
     @quick_mode_group.command("表情包")
-    async def quick_sticker(self, event: AstrMessageEvent, prompt: str):
+    async def quick_sticker(self, event: AstrMessageEvent, prompt: str = ""):
         """表情包快速模式 - 4K分辨率，16:9比例，Q版LINE风格
 
         功能受配置文件控制：
@@ -1153,7 +1078,7 @@ class GeminiImageGenerationPlugin(Star):
 
             # 如果开启了ZIP，优先尝试发送ZIP
             if self.enable_sticker_zip:
-                zip_path = create_zip(split_files)
+                zip_path = await asyncio.to_thread(create_zip, split_files)
                 if zip_path:
                     try:
                         from astrbot.api.message_components import File
@@ -1536,6 +1461,3 @@ class GeminiImageGenerationPlugin(Star):
         else:
             yield event.plain_result(result_data)
 
-    async def terminate(self):
-        """插件卸载时清理资源"""
-        logger.info("🎨 Gemini 图像生成插件已卸载")

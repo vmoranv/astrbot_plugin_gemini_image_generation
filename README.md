@@ -1,8 +1,8 @@
-# AstrBot Gemini 图像生成插件 v1.5.1
+# AstrBot Gemini 图像生成插件 v1.5.2
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-v1.5.1-blue)
+![Version](https://img.shields.io/badge/Version-v1.5.2-blue)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 **🎨 强大的 Gemini 图像生成插件，支持智能头像参考和多模式生成**
@@ -31,8 +31,7 @@
 - **降级处理**: 自动处理参数兼容性问题
 - **缓存机制**: 避免重复下载头像，提升性能
 - **多文件配置**: 支持不同聊天环境的独立配置
-
-### ⚙️ **高级配置**
+- **智能标记**: 为头像添加了标记用于识别
 - **分辨率控制**: 支持 1K、2K、4K 分辨率
 - **长宽比调整**: 支持多种常用比例（1:1, 16:9, 4:3, 9:16等）
 - **Google 搜索接地**: 实时数据参考生成
