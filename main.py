@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
+from PIL import Image as PILImage
 import yaml
 
 from astrbot.api import logger
@@ -35,9 +36,11 @@ from .tl.enhanced_prompts import (
     get_modification_prompt,
     get_poster_prompt,
     get_sticker_prompt,
+    get_sticker_bbox_prompt,
     get_style_change_prompt,
     get_wallpaper_prompt,
 )
+from astrbot.api.provider import ProviderRequest
 from .tl.tl_api import (
     APIClient,
     APIError,
@@ -48,6 +51,7 @@ from .tl.tl_utils import (
     AvatarManager,
     cleanup_old_images,
     download_qq_avatar,
+    encode_file_to_base64,
     send_file,
 )
 
@@ -286,6 +290,10 @@ class GeminiImageGenerationPlugin(Star):
         """从配置加载所有设置"""
         api_settings = self.config.get("api_settings", {})
         provider_id = api_settings.get("provider_id") or ""
+        self.provider_id = provider_id
+        self.vision_provider_id = api_settings.get("vision_provider_id") or ""
+        # 视觉识别模型留空则使用提供商默认模型，这里不强制覆盖
+        self.vision_model = (api_settings.get("vision_model") or "").strip()
         # 预先读取用户显式覆盖（如选择 openai、自定义 api_base/model）
         manual_api_type = (api_settings.get("api_type") or "").strip()
         manual_api_base = (api_settings.get("custom_api_base") or "").strip()
@@ -307,6 +315,7 @@ class GeminiImageGenerationPlugin(Star):
         self.preserve_reference_image_size = image_settings.get(
             "preserve_reference_image_size", False
         )
+        self.enable_llm_crop = image_settings.get("enable_llm_crop", True)
         # 从配置中读取强制分辨率设置，默认为False
         self.force_resolution = image_settings.get("force_resolution", False)
 
@@ -384,6 +393,9 @@ class GeminiImageGenerationPlugin(Star):
                     )
 
             if provider:
+                # 补全 provider_id，便于后续视觉识别调用
+                if not self.provider_id:
+                    self.provider_id = provider.provider_config.get("id", "")
                 prov_type = str(provider.provider_config.get("type", "")).lower()
                 # 如果用户未显式选择 api_type，则按提供商类型推断
                 if not manual_api_type:
@@ -431,6 +443,113 @@ class GeminiImageGenerationPlugin(Star):
         else:
             logger.error("✗ 未读取到 API 密钥，请确认 AstrBot 提供商中已配置 key")
 
+    async def _llm_detect_and_split(self, image_path: str) -> list[str]:
+        """使用视觉 LLM 识别裁剪框后切割，失败返回空列表"""
+        if not self.enable_llm_crop:
+            logger.debug("[LLM_CROP] 已关闭视觉裁剪开关，跳过识别")
+            return []
+
+        # 若未单独配置视觉识别提供商，则不启用，以免占用生图模型
+        if not self.vision_provider_id:
+            logger.debug("[LLM_CROP] 未配置 vision_provider_id，跳过视觉裁剪")
+            return []
+
+        try:
+            # 读取图片尺寸用于提示
+            with PILImage.open(image_path) as img:
+                width, height = img.size
+            prompt = get_sticker_bbox_prompt(rows=6, cols=4)
+
+            # 若图过大，先生成压缩副本以提升识别成功率
+            image_urls: list[str] = []
+            vision_input_path = image_path
+            try:
+                max_side = max(width, height)
+                if max_side > 1200:
+                    ratio = 1200 / max_side
+                    new_w = int(width * ratio)
+                    new_h = int(height * ratio)
+                    img = img.resize((new_w, new_h))
+                    tmp_path = Path("/tmp") / f"vision_crop_{Path(image_path).stem}.png"
+                    img.save(tmp_path, format="PNG")
+                    vision_input_path = str(tmp_path)
+                    logger.debug(
+                        f"[LLM_CROP] 生成压缩副本用于识别: {vision_input_path} ({new_w}x{new_h})"
+                    )
+            except Exception as e:
+                logger.debug(f"[LLM_CROP] 压缩副本生成失败，使用原图: {e}")
+
+            image_urls = [vision_input_path] if vision_input_path else []
+            logger.info(
+                f"[LLM_CROP] 调用视觉模型裁剪: provider={self.vision_provider_id} (使用默认模型)"
+            )
+            resp = await self.context.llm_generate(
+                chat_provider_id=self.vision_provider_id,
+                prompt=prompt,
+                image_urls=image_urls,
+                max_output_tokens=600,
+                timeout=120, 
+                on_llm_request=self._inject_vision_system_prompt,
+            )
+            text = self._extract_llm_text(resp)
+            if not text:
+                return []
+
+            # 尝试解析 JSON 数组
+            import json
+            import re
+
+            match = re.search(r"\[.*\]", text, re.S)
+            json_str = match.group(0) if match else text
+            json_str = json_str.replace("```json", "").replace("```", "").strip()
+            bboxes = json.loads(json_str)
+            if not isinstance(bboxes, list):
+                return []
+
+            # 过滤有效框
+            clean_boxes = []
+            for box in bboxes:
+                try:
+                    x = int(box.get("x", 0))
+                    y = int(box.get("y", 0))
+                    w = int(box.get("width", 0))
+                    h = int(box.get("height", 0))
+                except Exception:
+                    continue
+                if w > 0 and h > 0:
+                    clean_boxes.append({"x": x, "y": y, "width": w, "height": h})
+
+            if not clean_boxes:
+                return []
+
+            # 调用裁剪工具
+            return await asyncio.to_thread(
+                split_image,
+                image_path,
+                rows=6,
+                cols=4,
+                bboxes=clean_boxes,
+            )
+        except Exception as e:
+            logger.debug(f"视觉识别裁剪失败: {e}")
+            return []
+
+    async def _inject_vision_system_prompt(
+        self, event: AstrMessageEvent, req: ProviderRequest
+    ):
+        """为视觉裁剪请求注入 system_prompt，提示返回 JSON 裁剪框"""
+        extra = (
+            "你是视觉裁剪助手，只需按要求返回 JSON 数组，每个元素包含 x,y,width,height（像素）。"
+            "禁止输出除 JSON 之外的任何内容。"
+        )
+        try:
+            if req.system_prompt:
+                req.system_prompt += "\n" + extra
+            else:
+                req.system_prompt = extra
+        except Exception:
+            pass
+
     def log_info(self, message: str):
         """根据配置输出info或debug级别日志"""
         if self.verbose_logging:
@@ -469,6 +588,33 @@ class GeminiImageGenerationPlugin(Star):
         text = text.strip()
 
         return text
+
+    @staticmethod
+    def _extract_llm_text(resp: Any) -> str:
+        """
+        兼容 AstrBot LLMResponse 文本提取：
+        - 优先 result_chain 中的 Plain 文本
+        - 其次 output_text / response
+        """
+        try:
+            if getattr(resp, "result_chain", None):
+                chain = getattr(resp.result_chain, "chain", None)
+                if isinstance(chain, list):
+                    parts: list[str] = []
+                    for comp in chain:
+                        text_val = getattr(comp, "text", None)
+                        if text_val:
+                            parts.append(str(text_val))
+                    if parts:
+                        return " ".join(parts).strip()
+
+            if getattr(resp, "output_text", None):
+                return (resp.output_text or "").strip()
+            if getattr(resp, "response", None):
+                return (resp.response or "").strip()
+        except Exception:
+            return ""
+        return ""
 
     def _filter_valid_reference_images(
         self, images: list[str] | None, source: str
@@ -1515,9 +1661,14 @@ The last {final_avatar_count} image(s) provided are User Avatars (marked as opti
             # 1. 切割图片
             yield event.plain_result("✂️ 正在切割图片...")
             try:
-                split_files = await asyncio.to_thread(
-                    split_image, primary_image_path, rows=6, cols=4
-                )
+                # 优先尝试视觉识别裁剪，失败则回退网格裁剪
+                split_files: list[str] = []
+                if self.enable_llm_crop:
+                    split_files = await self._llm_detect_and_split(primary_image_path)
+                if not split_files:
+                    split_files = await asyncio.to_thread(
+                        split_image, primary_image_path, rows=6, cols=4
+                    )
             except Exception as e:
                 logger.error(f"切割图片时发生异常: {e}")
                 split_files = []
@@ -1568,12 +1719,19 @@ The last {final_avatar_count} image(s) provided are User Avatars (marked as opti
 
                 # 构造节点内容：原图 + 所有小图
                 node_content = []
-                node_content.append(Plain("原图预览：\n"))
-                node_content.append(AstrImage.fromFileSystem(primary_image_path))
-                node_content.append(Plain("\n\n表情包切片：\n"))
+                # 原图预览
+                node_content.append(Plain("原图预览："))
+                try:
+                    node_content.append(AstrImage.fromFileSystem(primary_image_path))
+                except Exception:
+                    pass
+                node_content.append(Plain("表情包切片："))
 
                 for file_path in split_files:
-                    node_content.append(AstrImage.fromFileSystem(file_path))
+                    try:
+                        node_content.append(AstrImage.fromFileSystem(file_path))
+                    except Exception:
+                        node_content.append(Plain(f"[切片发送失败]: {file_path}"))
 
                 # 构造单个节点，包含所有图片
                 node = Node(

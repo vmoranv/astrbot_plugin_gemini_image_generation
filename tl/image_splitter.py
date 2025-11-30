@@ -1,5 +1,6 @@
 import zipfile
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -9,16 +10,22 @@ from .tl_utils import get_plugin_data_dir
 
 
 def split_image(
-    image_path: str, rows: int = 6, cols: int = 4, output_dir: str | None = None
+    image_path: str,
+    rows: int = 6,
+    cols: int = 4,
+    output_dir: str | None = None,
+    bboxes: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     """
     将图片切分为指定行列的网格
+    若提供 bboxes，则按识别出的裁剪框切割
 
     Args:
         image_path: 源图片路径
         rows: 行数，默认6行
         cols: 列数，默认4列
         output_dir: 输出目录，如果不指定则使用插件数据目录下的 split_output
+        bboxes: 可选的裁剪框列表，格式 [{"x": int, "y": int, "width": int, "height": int}]
 
     Returns:
         List[str]: 切分后的图片文件路径列表，按顺序排列
@@ -27,15 +34,10 @@ def split_image(
         with Image.open(image_path) as img:
             width, height = img.size
 
-            # 如果图片是横向的（宽 > 高），交换行列数
-            # 默认是纵向切割：6行4列
-            if width > height and rows > cols:
+            # 如果图片是横向的（宽 > 高），交换行列数（网格模式）
+            if not bboxes and width > height and rows > cols:
                 rows, cols = cols, rows
                 logger.debug(f"检测到横向图片，自动调整切割网格为 {rows}行 x {cols}列")
-
-            # 计算每个切片的宽高
-            piece_width = width // cols
-            piece_height = height // rows
 
             # 如果未指定输出目录，则使用插件的标准数据目录
             if not output_dir:
@@ -53,28 +55,55 @@ def split_image(
 
             output_files = []
 
-            # 遍历网格进行切分
-            # r 从 0 到 rows-1, c 从 0 到 cols-1
-            for r in range(rows):
-                for c in range(cols):
-                    # 计算裁剪区域 (left, upper, right, lower)
-                    left = c * piece_width
-                    upper = r * piece_height
-                    right = left + piece_width
-                    lower = upper + piece_height
+            if bboxes:
+                for idx, box in enumerate(bboxes, 1):
+                    try:
+                        x = int(box.get("x", 0))
+                        y = int(box.get("y", 0))
+                        w = int(box.get("width", 0))
+                        h = int(box.get("height", 0))
+                    except Exception:
+                        logger.debug(f"跳过无效裁剪框: {box}")
+                        continue
 
-                    # 裁剪
+                    if w <= 0 or h <= 0:
+                        logger.debug(f"跳过尺寸异常裁剪框: {box}")
+                        continue
+
+                    left = max(0, x)
+                    upper = max(0, y)
+                    right = min(width, left + w)
+                    lower = min(height, upper + h)
+
+                    if right <= left or lower <= upper:
+                        logger.debug(f"跳过越界裁剪框: {box}")
+                        continue
+
                     piece = img.crop((left, upper, right, lower))
-
-                    # 生成文件名，格式：{base_name}_{id}.png
-                    # id 从 1 开始，按行优先顺序
-                    idx = r * cols + c + 1
                     file_name = f"{base_name}_{idx}.png"
                     file_path = final_output_dir / file_name
-
-                    # 保存
                     piece.save(file_path, "PNG")
                     output_files.append(str(file_path))
+            else:
+                # 网格裁剪模式
+                piece_width = width // cols
+                piece_height = height // rows
+
+                for r in range(rows):
+                    for c in range(cols):
+                        left = c * piece_width
+                        upper = r * piece_height
+                        right = left + piece_width
+                        lower = upper + piece_height
+
+                        piece = img.crop((left, upper, right, lower))
+
+                        idx = r * cols + c + 1
+                        file_name = f"{base_name}_{idx}.png"
+                        file_path = final_output_dir / file_name
+
+                        piece.save(file_path, "PNG")
+                        output_files.append(str(file_path))
 
             return output_files
 

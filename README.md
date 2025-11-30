@@ -1,8 +1,8 @@
-# AstrBot Gemini 图像生成插件 v1.5.5
+# AstrBot Gemini 图像生成插件 v1.6.0
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-v1.5.5-blue)
+![Version](https://img.shields.io/badge/Version-v1.6.0-blue)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
 **🎨 强大的 Gemini 图像生成插件，支持智能头像参考和多模式生成**
@@ -63,7 +63,8 @@
 
 在插件配置中设置以下参数：
 
-- **api_settings.provider_id**: 从 AstrBot 提供商列表中选择模型（`_special: select_provider`），自动读取模型/密钥/端点；不选将无法调用，请先在 AstrBot 主配置中添加提供商
+- **api_settings.provider_id**: 生图模型提供商（`_special: select_provider`），自动读取模型/密钥/端点；不选将无法调用
+- **api_settings.vision_provider_id**: 视觉识别提供商（用于表情包智能裁剪，开启识别时必选，默认使用提供商自带模型）
 - **html_render_options.quality**: HTML 帮助页截图质量（1-100，可选）
 - **参考图下载重试**: 参考图下载仅重试 1 次（超时/空文件会直接放弃，避免长时间卡住）
 
@@ -76,6 +77,7 @@
 
 - **api_type**: `"google"`/`"openai"`（可选），若未填写则随 AstrBot 提供商自动识别
 - **model**: 可选覆盖提供商模型；留空则使用提供商默认模型
+- **视觉裁剪**: 启用 `enable_llm_crop` 时，表情包切割先用视觉模型识别裁剪框（只要配置了 vision_provider_id），失败回退 6x4 网格
 
 ### 限制/限流设置
 

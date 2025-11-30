@@ -165,6 +165,16 @@ class GeminiAPIClient:
                     logger.warning(f"跳过无法识别/读取的参考图像: {type(image_input)}")
                     continue
 
+                # 严格校验 base64，避免传入无效数据导致 inline_data 解码错误
+                try:
+                    base64.b64decode(data, validate=True)
+                except Exception:
+                    logger.warning(
+                        "跳过无效的 base64 参考图像: %s...",
+                        str(image_input)[:80],
+                    )
+                    continue
+
                 parts.append({"inlineData": {"mimeType": mime_type, "data": data}})
 
         contents = [{"role": "user", "parts": parts}]
@@ -523,11 +533,15 @@ class GeminiAPIClient:
                     headers["Origin"] = "https://qun.qq.com"
                     headers.setdefault("Accept", headers["Accept"] + ",image/png")
 
-                timeout = aiohttp.ClientTimeout(total=12, connect=5)
-                max_retries = 3
+                timeout = aiohttp.ClientTimeout(total=20, connect=10)
+                # 参考图下载只重试一次，避免卡住
+                max_retries = 1
                 retry_interval = 1.0
 
-                async with aiohttp.ClientSession(timeout=timeout, trust_env=True) as session:
+                # QQ 图域名容易被代理阻断，强制不继承环境代理
+                trust_env = False if (parsed_url.netloc and "qq.com" in parsed_url.netloc) else True
+
+                async with aiohttp.ClientSession(timeout=timeout, trust_env=trust_env) as session:
                     fallback_reason = None
 
                     for attempt in range(1, max_retries + 1):

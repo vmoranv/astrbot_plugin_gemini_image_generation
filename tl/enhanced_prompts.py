@@ -155,6 +155,21 @@ def get_style_change_prompt(style: str, prompt: str = "") -> str:
     return full_prompt
 
 
+def get_sticker_bbox_prompt(rows: int = 6, cols: int = 4) -> str:
+    """获取表情包裁剪框识别提示词"""
+    return f"""
+请你作为视觉理解助手，识别输入图片中的表情包网格，并输出每个子图的裁剪框。
+
+要求：
+1. 图片通常是 {rows} 行 x {cols} 列的网格，按行优先顺序排列。
+2. 输出 JSON 数组，元素格式：{{"x":像素,"y":像素,"width":像素,"height":像素}}，不需要其他字段，不要加代码块/注释。
+3. 坐标以像素为单位，x/y 为左上角位置，width/height 为宽高，尽量贴合每个表情图边界。
+4. 保证每个角色/表情图完整不被截断，框内包含完整人物和文字，不要裁掉头手等关键部位。
+5. 若网格不齐或存在空白，请仍按可见子图顺序给出裁剪框，最多 {rows*cols} 个。
+6. 只输出 JSON，勿返回多余说明。
+"""
+
+
 def enhance_prompt_for_figure(prompt: str) -> str:
     """兼容旧接口"""
     return get_figure_prompt(prompt, style_type=1)

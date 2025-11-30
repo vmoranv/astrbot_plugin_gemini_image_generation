@@ -15,7 +15,7 @@
     "hint": "配置 API 端点和相关设置",
     "items": {
       "provider_id": {
-        "description": "模型提供商（必选）",
+        "description": "生图模型提供商（必选）",
         "type": "string",
         "hint": "从 AstrBot 提供商列表中选择，插件自动读取模型/密钥/端点；不选将无法调用",
         "_special": "select_provider",
@@ -36,6 +36,13 @@
         "description": "模型名称（可选）",
         "type": "string",
         "hint": "如需覆盖 AstrBot 提供商的模型，可在此填写。例如 gemini-3-pro-image-preview 或 OpenAI 兼容模型名。留空使用提供商默认模型",
+        "default": ""
+      },
+      "vision_provider_id": {
+        "description": "视觉识别提供商（开启识别必选）",
+        "type": "string",
+        "hint": "用于 LLM 视觉识别裁剪的提供商",
+        "_special": "select_provider",
         "default": ""
       }
     }
@@ -80,6 +87,12 @@
         "hint": "在表情包模式下，自动将生成的一张包含多表情的图片切割成独立的表情图，并以合并转发形式发送",
         "default": true
       },
+      "enable_llm_crop": {
+        "description": "启用 LLM 视觉识别裁剪",
+        "type": "bool",
+        "hint": "在表情包切割前尝试用单独的视觉模型识别裁剪框，失败则回退网格切割（需在 api_settings 中配置视觉提供商）",
+        "default": true
+      },
       "enable_sticker_zip": {
         "description": "启用表情包打包发送",
         "type": "bool",
@@ -115,6 +128,12 @@
         "type": "bool",
         "hint": "启用后，无论模型名称是什么，都强制传递 image_size 参数给 API。如果使用非 gemini-3-pro-image-preview 模型但支持分辨率参数，请开启此选项。",
         "default": false
+      },
+      "enable_llm_crop": {
+        "description": "启用 LLM 视觉识别裁剪",
+        "type": "bool",
+        "hint": "在表情包切割前尝试用模型识别网格裁剪框，失败则回退网格切割（会调用所选提供商）",
+        "default": true
       }
     }
   },
@@ -171,19 +190,6 @@
         "type": "bool",
         "hint": "启用后显示详细的运行日志，包括API调用时间、文件传输状态等。关闭后只有开启debug档才显示",
         "default": false
-      },
-      "html_render_options": {
-        "description": "HTML 渲染截图选项",
-        "type": "object",
-        "hint": "用于 html_render 渲染帮助页时的截图配置",
-        "items": {
-          "quality": {
-            "description": "截图质量（1-100）",
-            "type": "int",
-            "hint": "留空使用astrbot默认值",
-            "default": null
-          }
-        }
       },
       "theme_settings": {
         "description": "主题设置",
@@ -249,6 +255,20 @@
         }
       }
     }
+  },
+  "html_render_options": {
+    "description": "HTML 渲染截图选项",
+    "type": "object",
+    "hint": "用于 html_render 渲染帮助页时的截图配置",
+    "items": {
+      "quality": {
+        "description": "截图质量（1-100）",
+        "type": "int",
+        "hint": "留空使用 AstrBot 默认值",
+        "default": null
+      }
+    },
+    "default": {}
   },
   "limit_settings": {
     "description": "限制/限流设置",
