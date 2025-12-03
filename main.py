@@ -36,6 +36,7 @@ from .tl.enhanced_prompts import (
     get_mobile_prompt,
     get_modification_prompt,
     get_poster_prompt,
+    get_q_version_sticker_prompt,
     get_sticker_bbox_prompt,
     get_sticker_prompt,
     get_style_change_prompt,
@@ -1625,34 +1626,7 @@ The last {final_avatar_count} image(s) provided are User Avatars (marked as opti
         ):
             yield result
 
-    @quick_mode_group.command("手办化")
-    async def quick_figure(self, event: AstrMessageEvent, prompt: str):
-        """手办化快速模式 - 树脂收藏级手办效果"""
-        # 解析参数
-        style_type = 1
-        clean_prompt = prompt
 
-        if prompt:
-            p_lower = prompt.lower()
-            if p_lower.startswith("1") or "pvc" in p_lower:
-                style_type = 1
-                clean_prompt = prompt.replace("1", "", 1).replace("pvc", "", 1).strip()
-            elif p_lower.startswith("2") or "gk" in p_lower:
-                style_type = 2
-                clean_prompt = prompt.replace("2", "", 1).replace("gk", "", 1).strip()
-
-        full_prompt = get_figure_prompt(clean_prompt, style_type)
-
-        async for result in self._handle_quick_mode(
-            event,
-            full_prompt,
-            "2K",
-            "3:2",
-            "手办化",
-            None,
-            skip_figure_enhance=True,
-        ):
-            yield result
 
     @quick_mode_group.command("表情包")
     async def quick_sticker(self, event: AstrMessageEvent, prompt: str = ""):
@@ -1675,6 +1649,10 @@ The last {final_avatar_count} image(s) provided are User Avatars (marked as opti
             event, include_at_avatars=use_avatar
         )
 
+        stripped_prompt = (prompt or "").strip()
+        simple_mode = stripped_prompt.startswith("简单")
+        user_prompt = stripped_prompt[len("简单") :].strip() if simple_mode else prompt
+
         if not reference_images:
             yield event.plain_result(
                 "❌ 表情包模式需要参考图才能生成一致的角色。\n"
@@ -1685,7 +1663,11 @@ The last {final_avatar_count} image(s) provided are User Avatars (marked as opti
 
         # 如果没有开启切割功能，直接使用默认逻辑
         if not self.enable_sticker_split:
-            full_prompt = get_sticker_prompt(prompt)
+            full_prompt = (
+                get_q_version_sticker_prompt(user_prompt)
+                if simple_mode
+                else get_sticker_prompt(user_prompt)
+            )
             old_resolution = self.resolution
             old_aspect_ratio = self.aspect_ratio
 
@@ -1702,7 +1684,11 @@ The last {final_avatar_count} image(s) provided are User Avatars (marked as opti
             return
 
         # 开启了切割功能，执行自定义逻辑
-        full_prompt = get_sticker_prompt(prompt)
+        full_prompt = (
+            get_q_version_sticker_prompt(user_prompt)
+            if simple_mode
+            else get_sticker_prompt(user_prompt)
+        )
         old_resolution = self.resolution
         old_aspect_ratio = self.aspect_ratio
 
@@ -1836,6 +1822,113 @@ The last {final_avatar_count} image(s) provided are User Avatars (marked as opti
                 await self.avatar_manager.cleanup_used_avatars()
             except Exception:
                 pass
+
+    @filter.command("切图")
+    async def split_image_command(self, event: AstrMessageEvent):
+        """对消息中的图片进行切割"""
+        ref_images, _ = await self._fetch_images_from_event(
+            event, include_at_avatars=False
+        )
+        if not ref_images:
+            yield event.plain_result(
+                "❌ 未找到可切割的图片。\n"
+                "🧐 可能原因：消息中未包含图片、引用消息或合并转发内无图片。\n"
+                "✅ 建议：请在指令中附带图片，或回复/引用包含图片的消息后再试。"
+            )
+            return
+
+        src = ref_images[0]
+        local_path = None
+
+        # 1) 已有本地文件
+        if isinstance(src, str) and Path(src).exists():
+            local_path = src
+        else:
+            try:
+                # 2) base64/data URL
+                if isinstance(src, str) and self._is_valid_base64_image_str(src):
+                    b64_data = src
+                    if ";base64," in src:
+                        _, _, b64_data = src.partition(";base64,")
+                    data = base64.b64decode(b64_data)
+                    tmp_path = Path("/tmp") / f"cut_{int(time.time()*1000)}.png"
+                    tmp_path.write_bytes(data)
+                    local_path = str(tmp_path)
+                # 3) URL 下载（含 qpic/nt.qq 直链）
+                elif isinstance(src, str) and src.startswith(("http://", "https://")):
+                    data_url = await self._download_qq_image(src)
+                    if not data_url and self.api_client:
+                        mime_type, b64 = await self.api_client._normalize_image_input(
+                            src
+                        )
+                        if b64:
+                            data_url = (
+                                b64
+                                if self.image_input_mode == "force_base64"
+                                else f"data:{mime_type};base64,{b64}"
+                            )
+
+                    if data_url and self._is_valid_base64_image_str(data_url):
+                        b64_data = data_url
+                        if ";base64," in data_url:
+                            _, _, b64_data = data_url.partition(";base64,")
+                        data = base64.b64decode(b64_data)
+                        tmp_path = Path("/tmp") / f"cut_{int(time.time()*1000)}.png"
+                        tmp_path.write_bytes(data)
+                        local_path = str(tmp_path)
+                # 4) 其他字符串尝试当作 base64
+                elif isinstance(src, str):
+                    data = base64.b64decode(src)
+                    tmp_path = Path("/tmp") / f"cut_{int(time.time()*1000)}.png"
+                    tmp_path.write_bytes(data)
+                    local_path = str(tmp_path)
+            except Exception as e:
+                logger.warning(f"切图解析图片失败: {e}")
+
+        if not local_path:
+            yield event.plain_result(
+                "❌ 图片下载/解析失败，无法进行切割。\n"
+                "🧐 可能原因：图片链接失效、群文件无权限或格式不受支持。\n"
+                "✅ 建议：重新发送清晰可访问的图片后再试。"
+            )
+            return
+
+        yield event.plain_result("✂️ 正在切割图片...")
+
+        split_files: list[str] = []
+        try:
+            split_files = await asyncio.to_thread(split_image, local_path, rows=6, cols=4)
+        except Exception as e:
+            logger.error(f"切割图片时发生异常: {e}")
+            split_files = []
+
+        if not split_files:
+            yield event.plain_result(
+                "❌ 图片切割失败，未生成有效切片。\n"
+                "🧐 可能原因：图片格式/尺寸异常，或切割依赖缺失。\n"
+                "✅ 建议：尝试更换图片或检查依赖后重试。"
+            )
+            return
+
+        from astrbot.api.message_components import Image as AstrImage
+        from astrbot.api.message_components import Node, Plain
+
+        node_content = [Plain("切片：")]
+        for file_path in split_files:
+            try:
+                node_content.append(AstrImage.fromFileSystem(file_path))
+            except Exception:
+                node_content.append(Plain(f"[切片发送失败]: {file_path}"))
+
+        sender_id = "0"
+        try:
+            if hasattr(event, "message_obj") and getattr(event, "message_obj", None):
+                sender_id = getattr(event.message_obj, "self_id", "0")
+        except Exception:
+            pass
+
+        node = Node(uin=sender_id, name="Gemini切图", content=node_content)
+        yield event.chain_result([node])
 
     @filter.command("生图帮助")
     async def show_help(self, event: AstrMessageEvent):

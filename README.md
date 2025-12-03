@@ -1,11 +1,13 @@
-# AstrBot Gemini 图像生成插件 v1.6.1
+# AstrBot Gemini 图像生成插件 v1.6.2
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/Version-v1.6.1-blue)
+![Version](https://img.shields.io/badge/Version-v1.6.2-blue)
 ![License](https://img.shields.io/badge/License-MIT-orange)
 
-**🎨 强大的 Gemini 图像生成插件，支持智能头像参考和多模式生成**
+</div>
+
+**🎨 强大的 Gemini 图像生成插件，支持智能头像参考和智能表情包切分**
 
 </div>
 
@@ -17,7 +19,7 @@
 - **换风格模式**: 专门的风格转换功能，支持配置化头像参考
 - **智能头像参考**: 自动获取用户头像和@指定对象头像作为参考，改图和换风格功能支持配置控制
 - **多API支持**: 兼容 Google 官方 API 和 OpenAI 兼容格式 API
-- **表情包切割**: 自动将生成的表情包网格切割为独立图片，支持合并转发和ZIP打包
+- **智能表情包切分**: 使用 SmartMemeSplitter 算法自动将生成的表情包网格切割为独立图片，支持合并转发和ZIP打包
 
 ### 🛡️ **限制/限流**
 - **群限制模式**: 支持不限制/白名单/黑名单三种模式
@@ -39,11 +41,12 @@
 - **智能重试**: 自动重试机制，提高成功率
 - **超时管理**: 适配框架超时控制
 - **主题配置**: 可配置的白天/黑夜主题自动切换
-  - **自动主题切换**: 根据时间自动选择白色/黑色主题
-  - **自定义时间段**: 可设置白天开始和结束时间（0-23点）
-  - **手动主题模式**: 可强制使用指定主题（白色/黑色）
-  - **动态渲染**: 帮助页面会根据时间或配置动态显示对应主题
+ - **自动主题切换**: 根据时间自动选择白色/黑色主题
+- **自定义时间段**: 可设置白天开始和结束时间（0-23点）
+- **手动主题模式**: 可强制使用指定主题（白色/黑色）
+- **动态渲染**: 帮助页面会根据时间或配置动态显示对应主题
 - **强制分辨率参数**: 支持强制传递分辨率参数，兼容各类非官方模型
+- **智能表情包切分**: 使用 SmartMemeSplitter 算法，支持边缘检测、投影分析、自动网格优化
 
 ## 📦 安装
 
@@ -66,9 +69,8 @@
 - **api_settings.provider_id**: 生图模型提供商（`_special: select_provider`），自动读取模型/密钥/端点；不选将无法调用
 - **api_settings.vision_provider_id**: 视觉识别提供商（用于表情包智能裁剪，开启识别时必选，默认使用提供商自带模型）
 - **html_render_options.quality**: HTML 帮助页截图质量（1-100，可选）
-- **image_generation_settings.image_input_mode**: 参考图传输格式。`auto` 自动选择；`force_base64` 强制转为纯 base64（不接受 data URL/直链）；`prefer_url` 优先使用图片 URL，必要时再转 base64。
+- **image_generation_settings.image_input_mode**: 参考图传输格式。`auto` 自动选择；`force_base64` 强制转为纯 base64（不接受 data URL/直链）；`prefer_url` 优先使用图片 URL，仅在必要时转换为 base64。
 - **参考图格式校验**: 参考图会在发送前统一检查 MIME，非 Gemini 支持的类型（PNG/JPEG/WEBP/HEIC/HEIF）将自动转为 PNG 再编码。
-
 
 ### 配置项详解
 
@@ -76,14 +78,12 @@
 - `provider_id`：必填，从 AstrBot 提供商中选择生图模型。
 - `api_type`：可选，覆盖提供商类型（google/openai）。
 - `model`：可选，覆盖提供商模型名称。
-- `vision_provider_id`：表情包视觉裁剪的提供商 ID（开启识别时必选）。
 
 **image_generation_settings**
-- `resolution`：生成分辨率，默认 `1K`（可选 1K/2K/4K）。
+- `resolution`：生成图像分辨率，默认 `1K`（可选 1K/2K/4K）。
 - `aspect_ratio`：长宽比，默认 `1:1`（常用比例已列出）。
-- `enable_sticker_split`：表情包切割，默认 true。
-- `enable_sticker_zip`：切割后是否打包 ZIP 发送，默认 false。
-- `enable_llm_crop`：表情包切割前是否用视觉模型识别裁剪框，默认 true。
+- `enable_sticker_split`：表情包切分，默认 true。
+- `enable_sticker_zip`：切分后是否打包 ZIP 发送，默认 false。
 - `preserve_reference_image_size`：改图/换风格时尽量保留参考图尺寸，默认 false。
 - `enable_grounding`：Gemini 搜索接地，默认 false。
 - `max_reference_images`：参考图最大数量，默认 6。
@@ -101,9 +101,9 @@
 - `auto_avatar_reference`：自动获取头像作为参考图，默认 false。
 - `verbose_logging`：输出详细日志，默认 false。
 - `theme_settings.mode`：帮助页主题模式 `cycle`/`single`，默认 cycle。
-  - `cycle_config.day_start`/`day_end`：白天时间段（小时），默认 6/18。
-  - `cycle_config.day_template`/`night_template`：模板文件名，默认 `help_template_light` / `help_template_dark`。
-  - `single_config.template_name`：单一模板文件名，默认 `help_template_light`。
+ - `cycle_config.day_start`/`day_end`：白天时间段（小时），默认 6/18。
+ - `cycle_config.day_template`/`night_template`：模板文件名，默认 `help_template_light` / `help_template_dark`。
+ - `single_config.template_name`：单一模板文件名，默认 `help_template_light`。
 
 **html_render_options**
 - `quality`：HTML 渲染截图质量（1-100，留空走默认）。
@@ -115,33 +115,30 @@
 - `rate_limit_period`：限流周期（秒），默认 60。
 - `max_requests_per_group`：单群周期内最大请求数，默认 5。
 
-
 ### API 配置
-
 - **api_type**: `"google"`/`"openai"`（可选），若未填写则随 AstrBot 提供商自动识别
 - **model**: 可选覆盖提供商模型；留空则使用提供商默认模型
-- **视觉裁剪**: 启用 `enable_llm_crop` 时，表情包切割先用视觉模型识别裁剪框（只要配置了 vision_provider_id），失败回退 6x4 网格
 
 ### 限制/限流设置
 
 #### 群限制模式
 - **group_limit_mode**: 群限制模式（none/whitelist/blacklist）
-  - `none`: 不限制，所有群都可以使用
-  - `whitelist`: 白名单模式，仅允许列表中的群使用
-  - `blacklist`: 黑名单模式，禁止列表中的群使用
+ - `none`: 不限制，所有群都可以使用
+ - `whitelist`: 白名单模式，仅允许列表中的群使用
+ - `blacklist`: 黑名单模式，禁止列表中的群使用
 - **group_limit_list**: 群号列表（字符串形式）
-  - 根据群限制模式配置需要生效的群号
-  - 在 none 模式下此配置不生效
+ - 根据群限制模式配置需要生效的群号
+ - 在 none 模式下此配置不生效
 
 #### 群内限流
 - **enable_rate_limit**: 启用群内限流
-  - 开启后对每个群在指定周期内的图像生成请求次数进行限制
+ - 开启后对每个群在指定周期内的图像生成/改图请求次数进行限制
 - **rate_limit_period**: 限流周期（秒）
-  - 每个群的统计周期长度，在此时间窗口内超过最大次数将被拒绝
-  - 默认: 60秒
+ - 每个群的统计周期长度，在此时间窗口内超过最大次数将被拒绝
+ - 默认: 60秒
 - **max_requests_per_group**: 单群每周期最大请求数
-  - 在一个周期内，每个群最多允许触发几次图像生成请求
-  - 默认: 5次
+ - 在一个周期内，每个群最多允许触发几次图像生成/改图/风格转换等请求
+ - 默认: 5次
 
 **注意**: 群限制模式和群内限流可以同时启用，实现更精细的访问控制。
 
@@ -151,38 +148,25 @@
 
 #### 生图模式
 ```
-/生图 一只可爱的橙色小猫，坐在樱花树下，动漫风格，高清细节
+/生图 一只可爱的橙色小猫，坐在樱花树下，动漫风格，高清细节，杰作，细节丰富
 ```
-```
-/生图 未来科技城市，赛博朋克风格，夜景，霓虹灯闪烁
-```
-```
-/生图 森林中的小木屋，早晨阳光透过树叶，写实风格
-```
-```
-/生图 @小王 为基础改成猫娘
-```
-<img width="1129" height="633" alt="PixPin_2025-11-23_07-14-22" src="https://github.com/user-attachments/assets/f96c8d37-08fd-48b2-b442-4ca8f2a333c4" />
 
 #### 改图模式
 ```
 发送图片 + /改图 把头发改成红色
 ```
-```
-发送图片 + /改图 换个背景，改成海边风景
-```
-```
-发送图片 + /改图 @小王 画成动漫风格
-```
-<img width="1159" height="1458" alt="8749eeb3af9e51ebabe4c82ee04cc1a4" src="https://github.com/user-attachments/assets/55594e40-84b7-43bb-a636-167cd4e980af" />
 
+#### 换风格
+```
+发送图片 + /换风格 水彩 梦幻效果
+```
 
-### 智能头像功能
+#### 智能头像功能
 
 #### 头像获取优先级
 1. **@指定用户** - 最高优先级（获取被@用户的头像）
-2. **发言人自己** - 中等优先级（获取发送消息用户的头像）
-3. **群头像** - 暂未实现
+2. **发言者自己** - 中等优先级（获取发送消息用户的头像）
+3. **群头像** - 低优先级（暂未实现）
 
 #### 触发条件
 
@@ -191,49 +175,45 @@
 
 - **个人相关**: "按照我"、"根据我"、"基于我"、"参考我"、"我的头像"
 - **修改相关**: "修改"、"改图"、"重做"、"重新"、"调整"、"优化"、"换风格"
-- **@用户**: `任何生图/改图命令 +@小王`
+- **@用户**: `任何生图/改图命令 + @小明`
 
 ##### 条件获取群头像
 群头像功能暂未实现，当前版本不会获取群头像作为参考。
 
 #### 使用示例
-
 ```bash
 # 场景1: 自动获取发言人头像
 /生图 按照我生成一个动漫头像
 # 结果: 获取发送者头像作为参考
-```
-```
+
 # 场景2: 获取@用户头像
-/改图 @小王 把头发改成蓝色
+/改图 @小明 把头发改成蓝色
 # 结果: 获取小明头像进行修改
-```
-```
+
 # 场景3: 群头像功能（暂未实现）
-# /生图 根据本群头像设计一个logo
+/生图 根据本群头像设计一个logo
 # 结果: 群头像功能暂未实现，不会获取群头像
-```
-```
+
 # 场景4: 普通生图
 /生图 一只可爱的小猫
 # 结果: 纯文本生成，不获取任何头像
 ```
-<img width="1145" height="617" alt="PixPin_2025-11-23_07-13-33" src="https://github.com/user-attachments/assets/fc758319-c412-4da0-bf1b-b509203eec5a" />
 
 ### 高级功能
 
-#### 快速模式
+#### 预设
 
 ```bash
 # 快速模式预设了最佳分辨率和比例，只需描述想要生成的内容
 
-/快速 头像 商务风格的个人头像        # 内置: 1K分辨率，1:1比例
-/快速 海报 赛博朋克游戏宣传          # 内置: 2K分辨率，16:9比例
-/快速 壁纸 未来科技城市夜景          # 内置: 4K分辨率，16:9比例
-/快速 卡片 简约商务风格名片          # 内置: 1K分辨率，3:2比例
-/快速 手机 极简主义手机壁纸          # 内置: 2K分辨率，9:16比例
-/快速 手办化 [1/2] 动漫角色         # 内置: 2K分辨率，3:2比例，支持PVC(1)和GK(2)两种风格
-/快速 表情包 Q版可爱表情             # 内置: 4K分辨率，16:9比例，LINE风格
+/快速 头像 ［描述］        # 配置: 1K分辨率，1:1比例
+/快速 海报 ［描述］          # 配置: 2K分辨率，16:9比例
+/快速 壁纸 ［描述］          # 配置: 4K分辨率，16:9比例
+/快速 卡片 ［描述］          # 配置: 1K分辨率，3:2比例
+/快速 手机 ［描述］          # 配置: 2K分辨率，9:16比例
+/快速 手办化 [1/2] ［描述］         # 配置: 2K分辨率，3:2比例，支持PVC(1)和GK(2)两种风格
+/快速 表情包 简单或者［描述］             # 配置: 4K分辨率，16:9比例，LINE风格，新增下级指令简单提供非中文的提示词适配非gemini-3-pro-image-preview模型中文输出畸形
+/切图                              # 对消息/引用/合并转发/群文件中的图片进行切割
 ```
 
 **说明：**
@@ -243,27 +223,35 @@
 - **卡片模式**: 自动使用1K分辨率和3:2比例，适合名片卡片
 - **手机模式**: 自动使用2K分辨率和9:16比例，适合手机壁纸
 - **手办化模式**: 树脂收藏级手办效果，支持通过参数`1`(PVC标准版)或`2`(树脂GK收藏版)选择风格
-- **表情包模式**: 自动使用4K分辨率和16:9比例，生成Q版LINE风格表情包
+- **表情包模式**: 自动使用4K分辨率和16:9比例，生成Q版LINE风格表情包，新增下级指令简单提供非中文的提示词适配非gemini-3-pro-image-preview模型中文输出畸形
+- **切图指令**: 自动从当前消息和引用消息中提取图片进行切割
 
 #### 风格转换
 ```bash
 # 发送图片后使用
 /换风格 动漫
 ```
-```
-/换风格 水彩 梦幻效果
-```
-```
-/换风格 油画 古典艺术风格
-```
-```
-/换风格 像素 8bit复古游戏风格
-```
 
 #### 配置管理
 ```bash
 /生图帮助  # 查看当前配置和参数
 ```
+
+### 智能表情包切分
+
+#### 智能网格检测
+使用 SmartMemeSplitter 算法：
+- **边缘检测**: Canny 算法检测图像边缘
+- **形态学处理**: 膨胀连接相邻元素
+- **投影分析**: 水平/垂直投影检测网格边界
+- **边界优化**: 精细调整找到最清晰的分隔线
+- **智能细分**: 检测过大的网格并自动细分
+
+#### 切分效果
+- **自动检测**: 智能识别表情包中的独立表情位置
+- **精确切割**: 基于检测到的网格线进行精确切割
+- **边缘优化**: 添加 padding 避免切割不完整
+- **排序输出**: 按从左到右、从上到下的顺序输出表情
 
 ## 🎨 图像生成技巧
 
@@ -278,14 +266,12 @@
 ```bash
 # 好的提示词
 /生图 一只白色波斯猫，蓝色大眼睛，坐在花园里，阳光透过树叶洒下，超高清，杰作，细节丰富
-```
-```
+
 # 详细描述
 /生图 赛博朋克风格的城市夜景，霓虹灯反射在雨后的街道上，飞行汽车穿梭于摩天大楼之间，电影级画质，写实风格
-```
-```
-# 指定艺术风格
-/生文 梵高风格的向日葵田，旋转的笔触，鲜艳的色彩，后印象派，油画质感
+
+# 艺术风格
+/生文 梵高风格的向日葵田，旋转的画笔，鲜艳的色彩，后印象派，油画质感
 ```
 
 ### 🎭 风格关键词
@@ -312,15 +298,13 @@
 - **4K**: 最高质量，适合壁纸、海报
 
 #### 长宽比
-- **1:1**: 头像、图标、正方形图片
+- **1:1**: 方形图片、头像、图标
 - **16:9**: 横向图片、壁纸、海报
 - **9:16**: 竖向图片、手机壁纸、封面
 - **4:3**: 传统照片比例
 - **3:2**: 单反相机比例
 
-## ⚡ 性能优化
-
-### 🚀 提升生成速度
+### ⚡ 性能优化
 
 1. **选择合适分辨率**
    - 日常使用: 1K 或 2K
@@ -345,7 +329,6 @@
 ### 常见问题
 
 #### 🔑 API相关
-
 **问题**: 生成失败，提示API错误
 ```
 ❌ 图像生成失败: API只返回了文本响应。请检查模型名称是否正确
@@ -367,13 +350,17 @@
 - 检查网络连接
 - astrbot本体的配置文件增加工具超时时间（使用gemini-3-pro-image-preview推荐100s以上）
 
-#### 🖼️ 头像功能
+#### 🖼️ 图像功能
 
 **问题**: 无法获取头像
+```
+❌ 无法获取头像
+```
 
 **解决方案**:
-- 确认使用的是NapCat平台（aiocqhttp）
+- 确认使用的是NapCat平台（onebotv11/http）
 - 检查NapCat是否正常运行
+- 检查群头像功能暂未实现
 
 ### 📊 状态检查
 
@@ -416,17 +403,18 @@
 - [Google Gemini API](https://ai.google.dev/) - 强大的多模态AI
 - [NapCat](https://napneko.github.io/) - OneBot v11 实现
 
-**特别感谢贡献者**:
+**特别感谢**:
+- [@MliKiowa](https://github.com/MliKiowa) - 图像切割算法提供者，为插件的智能表情包切分功能提供了重要的算法支持
 - [@exynos967](https://github.com/exynos967) - 多个重要功能和修复
-  - **[PR#1](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/1)**: 限制/限流设置和手办化功能
-  - **[PR#2](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/2)**: 兼容 OpenAI/Gemini混合url响应格式
-  - **[PR#3](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/3)**: 兼容 OpenAI 传入参数
-  - **[PR#4](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/4)**: 手办化命令使用专用提示词
-- [@zouyonghe](https://github.com/zouyonghe) - 新增代理支持
-  - **[PR#5](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/5)**: 为 Gemini API 客户端添加代理支持
-  - **[PR#6](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/6)**: 增加保留参考图尺寸开关，改图/换风格可沿用参考图分辨率
+ - **[PR#1](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/1)**: 限制/限流设置和手办化功能
+ - **[PR#2](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/2)**: 兼容 OpenAI/Gemini混合url响应格式
+ - **[PR#3](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/3)**: 兼容 OpenAI传入参数
+ - **[PR#4](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/4)**: 手办化命令使用专用提示词
+ - [@zouyonghe](https://github.com/zouyonghe) - 新增代理支持，可选固定尺寸
+ - **[PR#5](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/5)**: 为 Gemini API 添加代理支持
+ - **[PR#6](https://github.com/piexian/astrbot_plugin_gemini_image_generation/pull/6)**: 增加保留参考图尺寸开关，改图/换风格可沿用参考图分辨率
 
-## 📞 联系支持
+## 🤝 关联支持
 
 - **项目地址**: [GitHub Repository](https://github.com/piexian/astrbot_plugin_gemini_image_generation)
 - **问题反馈**: [Issues](https://github.com/piexian/astrbot_plugin_gemini_image_generation/issues)

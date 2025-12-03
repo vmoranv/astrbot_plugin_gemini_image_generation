@@ -1,14 +1,4 @@
 {
-  "openai_api_keys": {
-    "description": "（已不再使用）请在 AstrBot 提供商中配置密钥",
-    "type": "list",
-    "hint": "插件现统一读取 AstrBot 的模型提供商配置，此字段仅为兼容旧版本保留",
-    "default": [
-      "your-api-key-here"
-    ],
-    "obvious_hint": true,
-    "invisible": true
-  },
   "api_settings": {
     "description": "API 设置",
     "type": "object",
@@ -36,13 +26,6 @@
         "description": "模型名称（可选）",
         "type": "string",
         "hint": "如需覆盖 AstrBot 提供商的模型，可在此填写。例如 gemini-3-pro-image-preview 或 OpenAI 兼容模型名。留空使用提供商默认模型",
-        "default": ""
-      },
-      "vision_provider_id": {
-        "description": "视觉识别提供商（开启识别必选）",
-        "type": "string",
-        "hint": "用于 LLM 视觉识别裁剪的提供商",
-        "_special": "select_provider",
         "default": ""
       }
     }
@@ -98,12 +81,6 @@
           "prefer_url"
         ]
       },
-      "enable_llm_crop": {
-        "description": "启用 LLM 视觉识别裁剪",
-        "type": "bool",
-        "hint": "在表情包切割前尝试用单独的视觉模型识别裁剪框，失败则回退网格切割（需在 api_settings 中配置视觉提供商）",
-        "default": true
-      },
       "enable_sticker_zip": {
         "description": "启用表情包打包发送",
         "type": "bool",
@@ -119,7 +96,7 @@
       "enable_grounding": {
         "description": "启用 Google 搜索接地",
         "type": "bool",
-        "hint": "启用后模型可以使用 Google 搜索验证事实并基于实时数据生成图片（如天气、股票、新闻等）。仅gemini-3-pro-image-preview模型支持",
+        "hint": "启用后模型可以使用 Google 搜索验证事实并基于实时数据生成图片（如天气、股票、新闻等）。仅 gemini-3-pro-image-preview 模型支持",
         "default": false
       },
       "max_reference_images": {
@@ -131,7 +108,7 @@
       "enable_text_response": {
         "description": "启用文本响应",
         "type": "bool",
-        "hint": "启用后模型将在返回图片的同时返回文本说明。关闭后只返回图片（仅限gemini 3有效）",
+        "hint": "启用后模型将在返回图片的同时返回文本说明。关闭后只返回图片（仅限 gemini 3 有效）",
         "default": false
       },
       "force_resolution": {
@@ -139,12 +116,6 @@
         "type": "bool",
         "hint": "启用后，无论模型名称是什么，都强制传递 image_size 参数给 API。如果使用非 gemini-3-pro-image-preview 模型但支持分辨率参数，请开启此选项。",
         "default": false
-      },
-      "enable_llm_crop": {
-        "description": "启用 LLM 视觉识别裁剪",
-        "type": "bool",
-        "hint": "在表情包切割前尝试用模型识别网格裁剪框，失败则回退网格切割（会调用所选提供商）",
-        "default": true
       }
     }
   },
@@ -187,7 +158,7 @@
       "nap_server_port": {
         "description": "文件传输端口",
         "type": "int",
-        "hint": "NAP cat 所处服务器接收文件端口，在同一服务器上可以不填",
+        "hint": "NAP cat 所在服务器接收文件端口，在同一服务器上可以不填",
         "default": 3658
       },
       "auto_avatar_reference": {
@@ -278,8 +249,7 @@
         "hint": "留空使用 AstrBot 默认值",
         "default": null
       }
-    },
-    "default": {}
+    }
   },
   "limit_settings": {
     "description": "限制/限流设置",

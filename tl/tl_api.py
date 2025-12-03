@@ -9,7 +9,6 @@ import asyncio
 import base64
 import binascii
 import hashlib
-import io
 import json
 import os
 import re
@@ -27,11 +26,16 @@ from astrbot.api import logger
 
 try:
     from .tl_utils import (
+        IMAGE_CACHE_DIR,
+        SUPPORTED_IMAGE_MIME_TYPES,
         encode_file_to_base64,
         get_plugin_data_dir,
         save_base64_image,
         save_image_data,
         save_image_stream,
+        coerce_supported_image,
+        coerce_supported_image_bytes,
+        normalize_image_input,
     )
 except ImportError:
     from pathlib import Path
@@ -57,15 +61,23 @@ except ImportError:
     def get_plugin_data_dir() -> Path:
         return Path(".")
 
+    IMAGE_CACHE_DIR = get_plugin_data_dir() / "images" / "download_cache"
+    SUPPORTED_IMAGE_MIME_TYPES = {
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/heic",
+        "image/heif",
+    }
 
-IMAGE_CACHE_DIR = get_plugin_data_dir() / "images" / "download_cache"
-SUPPORTED_IMAGE_MIME_TYPES = {
-    "image/png",
-    "image/jpeg",
-    "image/webp",
-    "image/heic",
-    "image/heif",
-}
+    def coerce_supported_image_bytes(mime_type, raw_bytes):
+        return None, None
+
+    def coerce_supported_image(mime_type, base64_data):
+        return None, None
+
+    async def normalize_image_input(image_input: Any, *, image_cache_dir=None, image_input_mode="auto"):
+        return None, None
 
 
 @dataclass
@@ -147,55 +159,11 @@ class GeminiAPIClient:
     def _coerce_supported_image_bytes(
         mime_type: str | None, raw_bytes: bytes
     ) -> tuple[str | None, str | None]:
-        """
-        将输入图片转换为 Gemini 支持的 MIME。
-        - 支持: PNG/JPEG/WEBP/HEIC/HEIF
-        - 不支持的格式尝试用 Pillow 转为 PNG
-        - 先解码为 Pillow Image，再重新编码，确保数据有效
-        """
-        normalized_mime = (mime_type or "").lower()
-        target_mime = normalized_mime if normalized_mime in SUPPORTED_IMAGE_MIME_TYPES else "image/png"
-        try:
-            with PILImage.open(io.BytesIO(raw_bytes)) as img:
-                if target_mime == "image/png":
-                    save_format = "PNG"
-                    if img.mode not in ("RGB", "RGBA"):
-                        img = img.convert("RGBA")
-                elif target_mime == "image/jpeg":
-                    save_format = "JPEG"
-                    if img.mode not in ("RGB", "L"):
-                        img = img.convert("RGB")
-                elif target_mime == "image/webp":
-                    save_format = "WEBP"
-                    if img.mode not in ("RGB", "RGBA"):
-                        img = img.convert("RGBA")
-                else:
-                    # HEIC/HEIF 等 Pillow 可能不支持，统一转 PNG
-                    save_format = "PNG"
-                    target_mime = "image/png"
-                    if img.mode not in ("RGB", "RGBA"):
-                        img = img.convert("RGBA")
-
-                buffer = io.BytesIO()
-                img.save(buffer, format=save_format)
-                buffer.seek(0)
-                encoded = base64.b64encode(buffer.read()).decode("utf-8")
-                return target_mime, encoded
-        except Exception as e:
-            logger.warning(f"参考图格式不受支持且转换失败: mime={mime_type}, err={e}")
-            return None, None
+        return coerce_supported_image_bytes(mime_type, raw_bytes)
 
     @staticmethod
     def _coerce_supported_image(mime_type: str | None, base64_data: str) -> tuple[str | None, str | None]:
-        """
-        兼容旧调用：先尝试解码 base64，再调用字节级转换。
-        """
-        try:
-            raw = base64.b64decode(base64_data, validate=False)
-        except Exception as e:
-            logger.warning(f"base64 解码失败，无法转换为受支持格式: {e}")
-            return None, None
-        return GeminiAPIClient._coerce_supported_image_bytes(mime_type, raw)
+        return coerce_supported_image(mime_type, base64_data)
 
     async def get_next_api_key(self) -> str:
         """获取下一个 API 密钥"""
@@ -594,260 +562,13 @@ class GeminiAPIClient:
 
     @staticmethod
     async def _normalize_image_input(image_input: Any) -> tuple[str | None, str | None]:
-        """
-        将参考图像输入规范化为 (mime_type, base64_data)。
-        支持 data URI、纯/宽松 base64 字符串、本地文件路径、file://、http/https URL。
-        """
-        try:
-            if image_input is None:
-                return None, None
+        """统一调用 tl_utils 的参考图规范化逻辑"""
+        return await normalize_image_input(
+            image_input,
+            image_cache_dir=IMAGE_CACHE_DIR,
+            image_input_mode="auto",
+        )
 
-            image_str = str(image_input).strip()
-            if "&amp;" in image_str:
-                image_str = image_str.replace("&amp;", "&")
-            if not image_str:
-                return None, None
-
-            # data URI
-            if image_str.startswith("data:image/") and ";base64," in image_str:
-                header, data = image_str.split(";base64,", 1)
-                mime_type = header.replace("data:", "")
-                try:
-                    raw = base64.b64decode(data, validate=False)
-                except Exception:
-                    logger.warning("data URL base64 解码失败")
-                    return None, None
-                return GeminiAPIClient._coerce_supported_image_bytes(mime_type, raw)
-
-            # file:// 路径
-            if image_str.startswith("file://"):
-                parsed = urllib.parse.urlparse(image_str)
-                image_path = Path(parsed.path)
-                if image_path.exists() and image_path.is_file():
-                    suffix = image_path.suffix.lower().lstrip(".") or "png"
-                    mime_type = f"image/{suffix}"
-                    try:
-                        data_bytes = image_path.read_bytes()
-                        return GeminiAPIClient._coerce_supported_image_bytes(mime_type, data_bytes)
-                    except Exception as e:
-                        logger.warning(f"读取 file:// 路径失败: {e}")
-                else:
-                    logger.warning(f"file:// 路径不存在: {image_str}")
-
-            # http(s) URL -> 下载并转base64（带重试和详细日志）
-            if image_str.startswith("http://") or image_str.startswith("https://"):
-                cleaned_url = image_str.replace("&amp;", "&")
-                parsed_url = urllib.parse.urlparse(cleaned_url)
-
-                # 缓存命中直接读取，避免重复下载和内存占用
-                try:
-                    cache_key = hashlib.sha256(cleaned_url.encode("utf-8")).hexdigest()
-                    IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                    cached = next(IMAGE_CACHE_DIR.glob(f"{cache_key}.*"), None)
-                    if cached and cached.exists() and cached.stat().st_size > 0:
-                        mime_guess = f"image/{cached.suffix.lstrip('.') or 'png'}"
-                        data = encode_file_to_base64(cached)
-                        logger.debug(f"参考图命中缓存: {cleaned_url}")
-                        return mime_guess, data
-                except Exception as e:
-                    logger.debug(f"检查参考图缓存失败: {e}")
-
-                # 优化请求头，兼容 CQ 码图服务器
-                headers: dict[str, str] = {
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36"
-                    ),
-                    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "Accept-Encoding": "gzip, deflate, br",
-                }
-                if parsed_url.scheme and parsed_url.netloc:
-                    headers["Referer"] = f"{parsed_url.scheme}://{parsed_url.netloc}"
-                if "gchat.qpic.cn" in (parsed_url.netloc or ""):
-                    headers["Referer"] = "https://qun.qq.com"
-                    headers["Origin"] = "https://qun.qq.com"
-                    headers.setdefault("Accept", headers["Accept"] + ",image/png")
-
-                timeout = aiohttp.ClientTimeout(total=20, connect=10)
-                # 参考图下载只重试一次，避免卡住
-                max_retries = 1
-                retry_interval = 1.0
-
-                # QQ 图域名容易被代理阻断，强制不继承环境代理
-                trust_env = False if (parsed_url.netloc and "qq.com" in parsed_url.netloc) else True
-
-                async with aiohttp.ClientSession(timeout=timeout, trust_env=trust_env) as session:
-                    fallback_reason = None
-
-                    for attempt in range(1, max_retries + 1):
-                        try:
-                            async with session.get(cleaned_url, headers=headers) as resp:
-                                if resp.status == 200:
-                                    content_type = resp.headers.get("Content-Type", "image/png")
-                                    mime_type = content_type.split(";")[0] if content_type else "image/png"
-                                    image_format = (
-                                        mime_type.split("/")[1] if "/" in mime_type else "png"
-                                    )
-
-                                    cache_path = IMAGE_CACHE_DIR / f"{cache_key}.{image_format}"
-                                    saved_path = await save_image_stream(
-                                        resp.content, image_format, cache_path
-                                    )
-                                    if saved_path:
-                                        data_bytes = Path(saved_path).read_bytes()
-                                        return GeminiAPIClient._coerce_supported_image_bytes(mime_type, data_bytes)
-
-                                    logger.warning(
-                                        "下载参考图为空: attempt=%s/%s url=%s",
-                                        attempt,
-                                        max_retries,
-                                        cleaned_url,
-                                    )
-                                else:
-                                    try:
-                                        err_text = (await resp.text())[:200]
-                                    except Exception:
-                                        err_text = ""
-                                    extra_hint = ""
-                                    if resp.status == 400 and "gchat.qpic.cn" in (parsed_url.netloc or ""):
-                                        extra_hint = "（QQ 图片可能需要有效 Referer，请尝试重新发送图片或稍后再试）"
-                                    logger.warning(
-                                        "下载图片失败: HTTP %s %s attempt=%s/%s url=%s 响应摘要=%s %s",
-                                        resp.status,
-                                        resp.reason or "",
-                                        attempt,
-                                        max_retries,
-                                        cleaned_url,
-                                        err_text,
-                                        extra_hint,
-                                    )
-                                    if resp.status == 400:
-                                        fallback_reason = "http400"
-                                        break
-                        except (
-                            aiohttp.ClientConnectionError,
-                            aiohttp.ClientPayloadError,
-                            aiohttp.ServerTimeoutError,
-                            asyncio.TimeoutError,
-                        ) as e:
-                            logger.warning(
-                                "下载图片连接异常: %s attempt=%s/%s url=%s",
-                                e,
-                                attempt,
-                                max_retries,
-                                cleaned_url,
-                            )
-                            if attempt == max_retries:
-                                fallback_reason = "aiohttp_error"
-                        except Exception as e:
-                            logger.warning(
-                                "下载参考图失败: %s attempt=%s/%s url=%s",
-                                e,
-                                attempt,
-                                max_retries,
-                                cleaned_url,
-                            )
-                            if attempt == max_retries:
-                                fallback_reason = "aiohttp_error"
-
-                        if attempt < max_retries:
-                            await asyncio.sleep(retry_interval * attempt)
-
-                    if not fallback_reason:
-                        fallback_reason = "aiohttp_error"
-
-                if fallback_reason:
-                    logger.debug("aiohttp 下载失败，使用 urllib 后备方案: reason=%s url=%s", fallback_reason, cleaned_url)
-                    fallback_headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                    }
-
-                    async def _download_with_urllib():
-                        def _blocking_download():
-                            try:
-                                req = urllib.request.Request(cleaned_url, headers=fallback_headers)
-                                with urllib.request.urlopen(req, timeout=12) as resp:
-                                    status = getattr(resp, "status", None) or resp.getcode()
-                                    if status != 200:
-                                        logger.warning(
-                                            "urllib 后备下载失败: HTTP %s url=%s",
-                                            status,
-                                            cleaned_url,
-                                        )
-                                        return None
-
-                                    content_type = resp.headers.get("Content-Type", "image/png")
-                                    mime_type = (
-                                        content_type.split(";")[0] if content_type else "image/png"
-                                    )
-                                    image_format = (
-                                        mime_type.split("/")[1] if "/" in mime_type else "png"
-                                    )
-
-                                    cache_path = IMAGE_CACHE_DIR / f"{cache_key}.{image_format}"
-                                    try:
-                                        cache_path.parent.mkdir(parents=True, exist_ok=True)
-                                        data_bytes = resp.read()
-                                        if not data_bytes:
-                                            logger.warning("urllib 后备下载返回空数据: url=%s", cleaned_url)
-                                            return None
-
-                                        with open(cache_path, "wb") as f:
-                                            f.write(data_bytes)
-
-                                        return GeminiAPIClient._coerce_supported_image_bytes(mime_type, data_bytes)
-                                    except Exception as e:
-                                        logger.warning(
-                                            "urllib 后备下载写入缓存失败: %s url=%s", e, cleaned_url
-                                        )
-                                        return None
-                            except Exception as e:
-                                logger.warning("urllib 后备下载异常: %s url=%s", e, cleaned_url)
-                                return None
-
-                        return await asyncio.to_thread(_blocking_download)
-
-                    mime_and_data = await _download_with_urllib()
-                    if mime_and_data:
-                        return mime_and_data
-
-            # 尝试解析为裸/宽松 base64 数据（在文件路径之前，避免长字符串导致 "File name too long"）
-            if len(image_str) > 255 or not any(
-                char in image_str for char in ["/", "\\", "."]
-            ):
-                try:
-                    cleaned = image_str.replace("\n", "").replace(" ", "")
-                    decoded = base64.b64decode(cleaned, validate=False)
-                    if decoded and len(decoded) > 100:
-                        return GeminiAPIClient._coerce_supported_image_bytes("image/png", decoded)
-                except (binascii.Error, ValueError):
-                    pass
-
-            # 本地文件路径（仅当字符串长度合理时尝试）
-            if len(image_str) <= 255:
-                candidate_paths = [
-                    Path(image_str),
-                    get_plugin_data_dir() / image_str,
-                    Path.cwd() / image_str,
-                ]
-                for image_path in candidate_paths:
-                    try:
-                        if image_path.exists() and image_path.is_file():
-                            suffix = image_path.suffix.lower().lstrip(".") or "png"
-                            mime_type = f"image/{suffix}"
-                            data_bytes = image_path.read_bytes()
-                            return GeminiAPIClient._coerce_supported_image_bytes(mime_type, data_bytes)
-                    except OSError:
-                        continue
-
-            return None, None
-        except Exception as e:
-            logger.warning(f"参考图像规范化失败: {e}")
-            return None, None
 
     async def _get_api_url(
         self, config: ApiRequestConfig

@@ -174,3 +174,12 @@ def get_sticker_bbox_prompt(rows: int = 6, cols: int = 4) -> str:
 def enhance_prompt_for_figure(prompt: str) -> str:
     """兼容旧接口"""
     return get_figure_prompt(prompt, style_type=1)
+
+
+def get_q_version_sticker_prompt(prompt: str = "") -> str:
+    """英文版Q版表情包提示词"""
+    base_prompt = """Generate a chibi-style drawing of the character in the image, using the LINE-style, with a half-body expression, and ensure the head accessories are accurate.\nUse a colorful hand-drawn style, strictly following a 4×4 LINE grid layout, with a pure white background.\nInclude various common chat phrases or related humorous memes.\nAdditional requirements: Do NOT copy the original image; reproduce it in high resolution and high quality.\nAll annotations should be simple symbols or English, and must be placed within the LINE grid layout."""
+
+    if prompt.strip():
+        return f"{base_prompt}\n\nAdditional user requirements: {prompt}"
+    return base_prompt
